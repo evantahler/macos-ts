@@ -1,0 +1,343 @@
+// Reverse-engineered Apple Notes protobuf schema
+// Sources:
+//   - threeplanetssoftware/apple_cloud_notes_parser (proto/notestore.proto)
+//   - HamburgChimps/apple-notes-liberator (src/main/proto/notestore.proto)
+//   - dunhamsteve/notesutils (notes.md)
+//   - Ciofeca Forensics "Revisiting Apple Notes" blog series
+//   - threeplanetssoftware protobuf_config.py field mappings
+//
+// Used to decode the gzip-compressed ZDATA blobs in ZICNOTEDATA.ZDATA
+// and the ZMERGEABLEDATA/ZMERGEABLEDATA1 blobs in ZICCLOUDSYNCINGOBJECT
+
+syntax = "proto2";
+
+// ============================================================================
+// Top-level note structure (ZICNOTEDATA.ZDATA after gunzip)
+// ============================================================================
+
+// Overarching object in a ZNOTEDATA.ZDATA blob
+message NoteStoreProto {
+  optional Document document = 2;
+}
+
+// A Document wraps a Note with a version marker
+message Document {
+  optional int32 version = 2;
+  optional Note note = 3;
+}
+
+// A Note contains the full text and formatting attribute runs.
+// The text uses U+FFFC (OBJECT REPLACEMENT CHARACTER) as a placeholder
+// for embedded attachments; the corresponding AttributeRun carries an
+// AttachmentInfo with the identifier that joins to ZICCLOUDSYNCINGOBJECT.
+message Note {
+  optional string note_text = 2;
+  repeated AttributeRun attribute_run = 5;
+}
+
+// ============================================================================
+// Attribute runs and formatting primitives
+// ============================================================================
+
+// Represents a contiguous "run" of characters sharing the same style.
+// The sum of all run lengths equals the length of note_text.
+message AttributeRun {
+  optional int32 length = 1;
+  optional ParagraphStyle paragraph_style = 2;
+  optional Font font = 3;
+  // font_weight: 1 = bold, 2 = italic, 3 = bold+italic
+  optional int32 font_weight = 5;
+  optional int32 underlined = 6;       // 1 = underlined
+  optional int32 strikethrough = 7;    // 1 = strikethrough
+  optional int32 superscript = 8;      // positive = superscript, negative = subscript
+  optional string link = 9;            // URL string for linked text
+  optional Color color = 10;           // text foreground color
+  optional AttachmentInfo attachment_info = 12;
+  optional int32 unknown_identifier = 13;
+  // emphasis_style: highlight/emphasis color marker (iOS 18+)
+  //   1 = Purple, 2 = Pink, 3 = Orange, 4 = Mint, 5 = Blue
+  optional int32 emphasis_style = 14;
+}
+
+// Styles a paragraph (block-level formatting for the run)
+message ParagraphStyle {
+  // style_type — see StyleType enum below; default is body text (-1 / absent)
+  optional int32 style_type = 1 [default = -1];
+  // alignment: 0 = left, 1 = center, 2 = right, 3 = justify
+  optional int32 alignment = 2;
+  // indent_amount: nesting depth (0-based); used for nested lists
+  optional int32 indent_amount = 4;
+  // checklist: present when style_type = 103 (checkbox)
+  optional Checklist checklist = 5;
+  // block_quote: 1 = block quote style (iOS 17+ / macOS Sequoia+)
+  optional int32 block_quote = 8;
+}
+
+// Checklist (to-do) item state
+message Checklist {
+  optional bytes uuid = 1;   // 16-byte UUID identifying this checklist item
+  optional int32 done = 2;   // 0 = unchecked, 1 = checked
+}
+
+// Font specification
+message Font {
+  optional string font_name = 1;    // e.g. ".AppleSystemUIFont", "Menlo-Regular"
+  optional float point_size = 2;
+  optional int32 font_hints = 3;    // 1 = monospace/code hint
+}
+
+// RGBA color (each channel is 0.0 – 1.0)
+message Color {
+  optional float red = 1;
+  optional float green = 2;
+  optional float blue = 3;
+  optional float alpha = 4;
+}
+
+// Identifies an embedded attachment (image, scan, drawing, table, etc.)
+message AttachmentInfo {
+  optional string attachment_identifier = 1;  // joins to ZICCLOUDSYNCINGOBJECT.ZIDENTIFIER
+  optional string type_uti = 2;               // e.g. "public.jpeg", "com.apple.drawing2"
+}
+
+// ============================================================================
+// StyleType values (used in ParagraphStyle.style_type)
+// ============================================================================
+//
+//   -1 = Body (default — field absent or explicitly -1)
+//    0 = Title (typically the first line of a note)
+//    1 = Heading
+//    2 = Subheading
+//    4 = Monospaced (code block)
+//  100 = Dotted list (bullet)
+//  101 = Dashed list
+//  102 = Numbered list (ordered)
+//  103 = Checkbox / Checklist (to-do)
+//
+// ============================================================================
+// Alignment values (used in ParagraphStyle.alignment)
+// ============================================================================
+//
+//    0 = Left (default)
+//    1 = Center
+//    2 = Right
+//    3 = Justify
+//
+// ============================================================================
+// FontWeight / font_weight values (used in AttributeRun.font_weight)
+// ============================================================================
+//
+//    0 = Normal (default — field absent)
+//    1 = Bold
+//    2 = Italic
+//    3 = Bold + Italic
+//
+// ============================================================================
+// Emphasis style values (used in AttributeRun.emphasis_style, iOS 18+)
+// ============================================================================
+//
+//    1 = Purple
+//    2 = Pink
+//    3 = Orange
+//    4 = Mint
+//    5 = Blue
+//
+
+// ============================================================================
+// Mergeable data structures (ZICCLOUDSYNCINGOBJECT.ZMERGEABLEDATA / ZMERGEABLEDATA1)
+// Used for embedded tables and other CRDT-based collaborative objects.
+// ============================================================================
+
+// Top-level wrapper for a ZMERGEABLEDATA1 blob
+message MergableDataProto {
+  optional MergableDataObject mergable_data_object = 2;
+}
+
+// Holds the version and the actual mergeable data
+message MergableDataObject {
+  optional int32 version = 2;
+  optional MergeableDataObjectData mergeable_data_object_data = 3;
+}
+
+// The mergeable data object with entries, key/type/UUID lookup arrays
+message MergeableDataObjectData {
+  optional MergeableDataObjectStats mergeable_data_object_stats = 1;
+  repeated MergeableDataObjectEntry mergeable_data_object_entry = 3;
+  repeated string mergeable_data_object_key_item = 4;
+  repeated string mergeable_data_object_type_item = 5;
+  repeated bytes mergeable_data_object_uuid_item = 6;
+}
+
+// Statistics about the mergeable data
+message MergeableDataObjectStats {
+  repeated MergeableDataObjectStat mergeable_data_object_stat = 1;
+}
+
+message MergeableDataObjectStat {
+  optional int32 stat_type = 1;
+  optional int32 value = 2;
+}
+
+// Each entry is a component of the object (e.g. row UUIDs, cell text, etc.)
+message MergeableDataObjectEntry {
+  optional RegisterLatest register_latest = 1;
+  optional List list = 5;
+  optional Dictionary dictionary = 6;
+  optional UnknownMergeableDataObjectEntryMessage unknown_message = 9;
+  optional Note note = 10;
+  optional MergeableDataObjectMap custom_map = 13;
+  optional OrderedSet ordered_set = 16;
+}
+
+// Unknown message first noticed in folder order analysis
+message UnknownMergeableDataObjectEntryMessage {
+  optional UnknownMergeableDataObjectEntryMessageEntry unknown_entry = 1;
+}
+
+message UnknownMergeableDataObjectEntryMessageEntry {
+  optional int32 unknown_int1 = 1;
+  optional int64 unknown_int2 = 2;   // folder order is stored here
+}
+
+// The Object Map: type identifies what you are looking at
+message MergeableDataObjectMap {
+  optional int32 type = 1;
+  repeated MapEntry map_entry = 3;
+}
+
+// ============================================================================
+// Shared structural types (used by both Note and MergeableData)
+// ============================================================================
+
+// Identifies objects within the protobuf by index, integer value, or string
+message ObjectID {
+  optional uint64 unsigned_integer_value = 2;
+  optional string string_value = 4;
+  optional int32 object_index = 6;
+}
+
+// Points to the most recent version of an object
+message RegisterLatest {
+  optional ObjectID contents = 2;
+}
+
+// Maps a key index (into key_item array) to an ObjectID
+message MapEntry {
+  optional int32 key = 1;
+  optional ObjectID value = 2;
+}
+
+// A key-value pair within a Dictionary
+message DictionaryElement {
+  optional ObjectID key = 1;
+  optional ObjectID value = 2;
+}
+
+// A collection of key-value pairs
+message Dictionary {
+  repeated DictionaryElement element = 1;
+}
+
+// Ordered set — used for table row/column structure
+message OrderedSet {
+  optional OrderedSetOrdering ordering = 1;
+  optional Dictionary elements = 2;
+}
+
+// Identifies rows and columns, with an array + contents dictionary
+message OrderedSetOrdering {
+  optional OrderedSetOrderingArray array = 1;
+  optional Dictionary contents = 2;
+}
+
+// Holds both the replacement text and the array of attachment UUIDs
+message OrderedSetOrderingArray {
+  optional Note contents = 1;
+  repeated OrderedSetOrderingArrayAttachment attachment = 2;
+}
+
+// UUID for an embedded table row or column
+message OrderedSetOrderingArrayAttachment {
+  optional int32 index = 1;
+  optional bytes uuid = 2;
+}
+
+// A list of entries (used in CRDT structures)
+message List {
+  repeated ListEntry list_entry = 1;
+}
+
+// A single list entry with an object ID and details
+message ListEntry {
+  optional ObjectID id = 2;
+  optional ListEntryDetails details = 3;
+  optional ListEntryDetails additional_details = 4;
+}
+
+// Details about a list entry
+message ListEntryDetails {
+  optional ListEntryDetailsKey list_entry_details_key = 1;
+  optional ObjectID id = 2;
+}
+
+message ListEntryDetailsKey {
+  optional int32 list_entry_details_type_index = 1;
+  optional int32 list_entry_details_key = 2;
+}
+
+// ============================================================================
+// Drawing structures (embedded sketches / Apple Pencil data)
+// Found in ZMERGEABLEDATA for "com.apple.drawing2" attachments
+// ============================================================================
+
+message Drawing {
+  optional int64 serialization_version = 1;
+  repeated bytes replica_uuids = 2;
+  repeated StrokeID version_vector = 3;
+  repeated Ink inks = 4;
+  repeated Stroke strokes = 5;
+  optional int64 orientation = 6;
+  optional StrokeID orientation_version = 7;
+  optional Rectangle bounds = 8;
+  optional bytes uuid = 9;
+}
+
+message StrokeID {
+  optional int32 replica_index = 1;
+  optional int64 counter = 2;
+}
+
+message Ink {
+  optional Color color = 1;
+  optional string identifier = 2;   // e.g. "com.apple.ink.pen", "com.apple.ink.marker"
+  optional int64 version = 3;
+}
+
+message Stroke {
+  optional int64 ink_index = 3;
+  optional int64 points_count = 4;
+  optional bytes points = 5;          // packed point data
+  optional Rectangle bounds = 6;
+  optional bool hidden = 9;
+  optional Transform transform = 10;
+  optional double timestamp = 11;
+  optional bool created_with_finger = 12;
+}
+
+// Axis-aligned bounding rectangle
+message Rectangle {
+  optional float origin_x = 1;
+  optional float origin_y = 2;
+  optional float width = 3;
+  optional float height = 4;
+}
+
+// 2D affine transform matrix
+message Transform {
+  optional float a = 1;
+  optional float b = 2;
+  optional float c = 3;
+  optional float d = 4;
+  optional float tx = 5;
+  optional float ty = 6;
+}

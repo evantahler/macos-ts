@@ -1,0 +1,22 @@
+{
+  "name": "apple-notes-ts",
+  "version": "0.1.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "example": "bun run example.ts",
+    "create-fixture": "bun run tests/fixtures/create-test-db.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "protobufjs": "^8.0.1"
+  }
+}

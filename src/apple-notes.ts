@@ -1,0 +1,110 @@
+import type { Database } from "bun:sqlite";
+import { openDatabase } from "./database/connection.ts";
+import { NoteReader } from "./database/reader.ts";
+import { decodeNoteData } from "./protobuf/decode.ts";
+import { noteToMarkdown } from "./conversion/proto-to-markdown.ts";
+import { AttachmentResolver } from "./attachments/resolver.ts";
+import {
+  NoteNotFoundError,
+  PasswordProtectedError,
+} from "./errors.ts";
+import type {
+  Account,
+  Folder,
+  NoteMeta,
+  NoteContent,
+  NoteContentPage,
+  AttachmentRef,
+  SearchOptions,
+  ListNotesOptions,
+  PaginationOptions,
+} from "./types.ts";
+
+export interface AppleNotesOptions {
+  dbPath?: string;
+  containerPath?: string;
+}
+
+export class AppleNotes {
+  private db: Database;
+  private reader: NoteReader;
+  private attachmentResolver: AttachmentResolver;
+
+  constructor(options?: AppleNotesOptions) {
+    this.db = openDatabase(options?.dbPath);
+    this.reader = new NoteReader(this.db);
+    this.attachmentResolver = new AttachmentResolver(options?.containerPath);
+  }
+
+  search(query: string, options?: SearchOptions): NoteMeta[] {
+    return this.reader.search(query, options);
+  }
+
+  read(noteId: number): NoteContent;
+  read(noteId: number, pagination: PaginationOptions): NoteContentPage;
+  read(
+    noteId: number,
+    pagination?: PaginationOptions,
+  ): NoteContent | NoteContentPage {
+    const result = this.reader.getNote(noteId);
+    if (!result) throw new NoteNotFoundError(noteId);
+
+    const { meta, zdata } = result;
+
+    if (meta.isPasswordProtected) {
+      throw new PasswordProtectedError(noteId);
+    }
+
+    let markdown = "";
+    if (zdata) {
+      const decoded = decodeNoteData(zdata);
+      markdown = noteToMarkdown(decoded);
+    }
+
+    if (pagination) {
+      const lines = markdown.split("\n");
+      const offset = pagination.offset ?? 0;
+      const limit = pagination.limit ?? 200;
+      const pageLines = lines.slice(offset, offset + limit);
+
+      return {
+        meta,
+        markdown: pageLines.join("\n"),
+        offset,
+        limit,
+        totalLines: lines.length,
+        hasMore: offset + limit < lines.length,
+      };
+    }
+
+    return { meta, markdown };
+  }
+
+  accounts(): Account[] {
+    return this.reader.listAccounts();
+  }
+
+  folders(account?: string): Folder[] {
+    return this.reader.listFolders(account);
+  }
+
+  notes(options?: ListNotesOptions): NoteMeta[] {
+    return this.reader.listNotes(options).map((r) => r.meta);
+  }
+
+  getAttachments(noteId: number): AttachmentRef[] {
+    const refs = this.reader.getAttachments(noteId);
+    return refs.map((ref) => ({
+      ...ref,
+      url: this.attachmentResolver.resolve(ref.name),
+    }));
+  }
+
+  getAttachmentUrl(attachmentId: string): string | null {
+    return this.attachmentResolver.resolve(attachmentId);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}

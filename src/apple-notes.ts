@@ -93,11 +93,20 @@ export class AppleNotes {
     const refs = this.reader.getAttachments(noteId);
     return refs.map((ref) => ({
       ...ref,
-      url: this.attachmentResolver.resolve(ref.name),
+      url: this.getAttachmentUrl(ref.identifier || ref.name),
     }));
   }
 
   getAttachmentUrl(attachmentId: string): string | null {
+    // Follow the ZMEDIA FK first — the file on disk uses the media row's
+    // identifier (a different UUID), and this avoids matching thumbnails
+    const media = this.reader.resolveMediaIdentifier(attachmentId);
+    if (media) {
+      const resolved = this.attachmentResolver.resolve(media.mediaIdentifier);
+      if (resolved) return resolved;
+    }
+
+    // Fall back to resolving directly by the attachment identifier
     return this.attachmentResolver.resolve(attachmentId);
   }
 

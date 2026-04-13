@@ -10,7 +10,7 @@ apple-notes-ts — TypeScript package for reading and searching Apple Notes on m
 - `bun run lint` — TypeScript type checking + Biome linting/format checking
 - `bun run format` — Auto-fix lint issues and reformat with Biome
 - `bun run mcp` — Start the stdio MCP server (requires Full Disk Access)
-- `bun example` — List notes on this machine and display one at random (requires Full Disk Access)
+- `bun tui` — Interactive TUI for browsing and reading notes (requires Full Disk Access)
 - `bun run create-fixture` — Regenerate the test fixture database
 
 ## Architecture

@@ -45,6 +45,7 @@ export interface NoteContentPage {
 
 export interface AttachmentRef {
   id: AttachmentId;
+  identifier: string;
   name: string;
   contentType: string;
   url: string | null;

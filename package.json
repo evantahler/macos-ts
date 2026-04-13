@@ -1,6 +1,6 @@
 {
   "name": "apple-notes-ts",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TypeScript package for reading and searching Apple Notes on macOS via direct SQLite access. Includes markdown conversion and attachment support!",
   "module": "src/index.ts",
   "bin": {
@@ -33,7 +33,7 @@
     "test": "bun test",
     "lint": "tsc --noEmit && biome check .",
     "format": "biome check --write .",
-    "example": "bun run example.ts",
+    "tui": "bun run tui.ts",
     "mcp": "bun run src/mcp-server.ts",
     "create-fixture": "bun run tests/fixtures/create-test-db.ts"
   },

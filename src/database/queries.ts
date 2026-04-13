@@ -129,6 +129,18 @@ export const GET_ATTACHMENTS = `
     AND a.Z_ENT = ?
 `;
 
+// Resolve an attachment identifier to its media identifier via the ZMEDIA FK.
+// The protobuf embeds the attachment ZIDENTIFIER, but files on disk are stored
+// under the media row's ZIDENTIFIER (a different UUID).
+export const RESOLVE_MEDIA_IDENTIFIER = `
+  SELECT
+    media.ZIDENTIFIER as mediaIdentifier,
+    media.ZFILENAME as mediaFilename
+  FROM ZICCLOUDSYNCINGOBJECT att
+  JOIN ZICCLOUDSYNCINGOBJECT media ON media.Z_PK = att.ZMEDIA
+  WHERE att.ZIDENTIFIER = ?
+`;
+
 // Discover entity types from Z_PRIMARYKEY table
 export const GET_ENTITY_TYPES = `
   SELECT Z_ENT, Z_NAME FROM Z_PRIMARYKEY

@@ -92,7 +92,7 @@ Errors: `DatabaseNotFoundError` (missing DB or no Full Disk Access), `NoteNotFou
 bun test              # Run test suite
 bun run lint          # TypeScript type checking + Biome lint
 bun run mcp           # Start the MCP stdio server
-bun example           # List notes on this machine, display one at random
+bun tui               # Interactive TUI for browsing and reading notes
 bun run create-fixture # Regenerate the test fixture database
 ```
 

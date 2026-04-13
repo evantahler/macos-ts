@@ -233,6 +233,27 @@ export class NoteReader {
     return results;
   }
 
+  resolveMediaIdentifier(
+    attachmentIdentifier: string,
+  ): { mediaIdentifier: string; mediaFilename: string } | null {
+    try {
+      const row = this.db
+        .query(Q.RESOLVE_MEDIA_IDENTIFIER)
+        .get(attachmentIdentifier) as {
+        mediaIdentifier: string | null;
+        mediaFilename: string | null;
+      } | null;
+      if (!row?.mediaIdentifier) return null;
+      return {
+        mediaIdentifier: row.mediaIdentifier,
+        mediaFilename: row.mediaFilename ?? "",
+      };
+    } catch {
+      // ZMEDIA column may not exist in older databases or test fixtures
+      return null;
+    }
+  }
+
   listAttachments(noteId: number): AttachmentRef[] {
     const rows = this.db
       .query(Q.GET_ATTACHMENTS)
@@ -240,6 +261,7 @@ export class NoteReader {
 
     return rows.map((r) => ({
       id: r.id,
+      identifier: r.identifier ?? "",
       name: r.name ?? "",
       contentType: r.contentType ?? "",
       url: null, // Resolved by AttachmentResolver

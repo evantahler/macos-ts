@@ -245,7 +245,8 @@ db.exec(`
     ZIDENTIFIER VARCHAR,
     ZFILENAME VARCHAR,
     ZTYPEUTI VARCHAR,
-    ZNOTE1 INTEGER
+    ZNOTE1 INTEGER,
+    ZMEDIA INTEGER
   );
 
   -- Note data table (contains the protobuf ZDATA blobs)
@@ -568,12 +569,21 @@ insertNote({
   ],
 });
 
-// Insert the attachment record
+// Insert the attachment record (linked to a media row via ZMEDIA)
+const mediaPk = 301;
 db.query(
   `INSERT INTO ZICCLOUDSYNCINGOBJECT
-   (Z_PK, Z_ENT, Z_OPT, ZIDENTIFIER, ZFILENAME, ZTYPEUTI, ZNOTE1)
-   VALUES (300, ${ENT_ATTACHMENT}, 1, ?, 'photo.jpg', 'public.jpeg', ?)`,
-).run(attachmentId, 110); // note 11 (0-indexed from 100): pk=110
+   (Z_PK, Z_ENT, Z_OPT, ZIDENTIFIER, ZFILENAME, ZTYPEUTI, ZNOTE1, ZMEDIA)
+   VALUES (300, ${ENT_ATTACHMENT}, 1, ?, NULL, 'public.jpeg', ?, ?)`,
+).run(attachmentId, 110, mediaPk); // note 11 (0-indexed from 100): pk=110
+
+// Insert the media row (the file on disk uses THIS row's identifier)
+const mediaId = "MEDIA-UUID-001";
+db.query(
+  `INSERT INTO ZICCLOUDSYNCINGOBJECT
+   (Z_PK, Z_ENT, Z_OPT, ZIDENTIFIER, ZFILENAME)
+   VALUES (?, ${ENT_ATTACHMENT}, 1, ?, 'photo.jpg')`,
+).run(mediaPk, mediaId);
 
 // Note 12: Inline code
 // "Inline Code Note\n" = 17, "Use the " = 8, "console.log" = 11, " function in your code.\n" = 24
@@ -587,13 +597,43 @@ insertNote({
   attributeRuns: [titleRun(17), bodyRun(8), inlineCodeRun(11), bodyRun(24)],
 });
 
+// Note 13: Note with PDF (Paper doc) attachment
+const pdfAttachmentId = "PDF-ATTACH-UUID-001";
+const pdfNotePk = insertNote({
+  title: "Note With PDF",
+  snippet: "Has a scanned PDF",
+  folderId: 10,
+  createdAt: yesterday,
+  modifiedAt: now,
+  noteText: "Note With PDF\nSee attached document:\n\uFFFC\n",
+  attributeRuns: [
+    titleRun(14), // "Note With PDF\n"
+    bodyRun(23), // "See attached document:\n"
+    attachmentRun(pdfAttachmentId, "com.apple.paper.doc.pdf"),
+    bodyRun(1), // "\n"
+  ],
+});
+
+// PDF attachment — no ZMEDIA, resolved via FallbackPDFs directory
+db.query(
+  `INSERT INTO ZICCLOUDSYNCINGOBJECT
+   (Z_PK, Z_ENT, Z_OPT, ZIDENTIFIER, ZFILENAME, ZTYPEUTI, ZNOTE1)
+   VALUES (302, ${ENT_ATTACHMENT}, 1, ?, NULL, 'com.apple.paper.doc.pdf', ?)`,
+).run(pdfAttachmentId, pdfNotePk);
+
 // ============================================================================
-// Create a fake attachment file
+// Create fake attachment files
 // ============================================================================
 
-const attachDir = resolve(FIXTURE_DIR, "Accounts", attachmentId);
+// Image attachment: file lives under the media identifier directory
+const attachDir = resolve(FIXTURE_DIR, "Accounts", mediaId);
 mkdirSync(attachDir, { recursive: true });
 writeFileSync(resolve(attachDir, "photo.jpg"), "fake-jpeg-data-for-testing");
+
+// PDF attachment: file lives in FallbackPDFs directory
+const pdfDir = resolve(FIXTURE_DIR, "FallbackPDFs", pdfAttachmentId);
+mkdirSync(pdfDir, { recursive: true });
+writeFileSync(resolve(pdfDir, "FallbackPDF.pdf"), "fake-pdf-data-for-testing");
 
 // ============================================================================
 // Done
@@ -601,6 +641,6 @@ writeFileSync(resolve(attachDir, "photo.jpg"), "fake-jpeg-data-for-testing");
 
 db.close();
 console.log(`Created test database at ${DB_PATH}`);
-console.log("Notes created: 12");
+console.log("Notes created: 13");
 console.log("Accounts: iCloud, On My Mac");
 console.log("Folders: Notes, Work, Personal");

@@ -71,7 +71,7 @@ describe("folders", () => {
 describe("notes", () => {
   test("returns all notes", () => {
     const notes = db.notes();
-    expect(notes).toHaveLength(12);
+    expect(notes).toHaveLength(13);
   });
 
   test("filters by folder name", () => {
@@ -286,6 +286,16 @@ describe("listAttachments", () => {
     expect(attachments[0]?.contentType).toBe("public.jpeg");
   });
 
+  test("resolves attachment URLs via ZMEDIA relationship", () => {
+    const attachments = db.listAttachments(110);
+    expect(attachments.length).toBeGreaterThan(0);
+    // URL should resolve through ZMEDIA to the media row's identifier
+    expect(attachments[0]?.url).not.toBeNull();
+    expect(attachments[0]?.url).toStartWith("file://");
+    expect(attachments[0]?.url).toContain("MEDIA-UUID-001");
+    expect(attachments[0]?.url).toContain("photo.jpg");
+  });
+
   test("returns empty array for note without attachments", () => {
     const attachments = db.listAttachments(100);
     expect(attachments).toHaveLength(0);
@@ -297,11 +307,31 @@ describe("listAttachments", () => {
 // ============================================================================
 
 describe("getAttachmentUrl", () => {
-  test("resolves attachment to file:// URL", () => {
+  test("resolves attachment identifier via ZMEDIA to file on disk", () => {
+    // ATTACH-UUID-001 has ZMEDIA -> MEDIA-UUID-001, and the file lives
+    // under the media identifier directory, not the attachment identifier
     const url = db.getAttachmentUrl("ATTACH-UUID-001");
     expect(url).not.toBeNull();
     expect(url).toStartWith("file://");
+    expect(url).toContain("MEDIA-UUID-001");
     expect(url).toContain("photo.jpg");
+  });
+
+  test("resolves media identifier directly", () => {
+    // The media identifier itself should also resolve directly
+    const url = db.getAttachmentUrl("MEDIA-UUID-001");
+    expect(url).not.toBeNull();
+    expect(url).toStartWith("file://");
+    expect(url).toContain("photo.jpg");
+  });
+
+  test("resolves Paper/PDF attachment via FallbackPDFs directory", () => {
+    // PDF-ATTACH-UUID-001 has no ZMEDIA — the file is in FallbackPDFs/
+    const url = db.getAttachmentUrl("PDF-ATTACH-UUID-001");
+    expect(url).not.toBeNull();
+    expect(url).toStartWith("file://");
+    expect(url).toContain("FallbackPDFs");
+    expect(url).toContain("FallbackPDF.pdf");
   });
 
   test("returns null for unknown attachment", () => {

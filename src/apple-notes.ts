@@ -104,4 +104,11 @@ export class AppleNotes {
   close(): void {
     this.db.close();
   }
+
+  static requestAccess(): void {
+    Bun.spawn([
+      "open",
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+    ]);
+  }
 }

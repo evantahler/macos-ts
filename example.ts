@@ -5,9 +5,20 @@
  * Run with: bun example
  */
 
-import { AppleNotes } from "./src/index.ts";
+import { AppleNotes, DatabaseAccessDeniedError } from "./src/index.ts";
 
-const db = new AppleNotes();
+let db: AppleNotes;
+try {
+  db = new AppleNotes();
+} catch (error) {
+  if (error instanceof DatabaseAccessDeniedError) {
+    console.error(error.message);
+    console.error("\nOpening Full Disk Access settings...");
+    error.openSettings();
+    process.exit(1);
+  }
+  throw error;
+}
 
 // List all accounts and folders
 const accounts = db.accounts();

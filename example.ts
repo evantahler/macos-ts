@@ -62,7 +62,7 @@ if (readable.length === 0) {
   console.log(content.markdown);
 
   // Show attachment info if any
-  const attachments = db.getAttachments(pick.id);
+  const attachments = db.listAttachments(pick.id);
   if (attachments.length > 0) {
     console.log();
     console.log(`Attachments (${attachments.length}):`);

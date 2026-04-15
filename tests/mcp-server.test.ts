@@ -7,14 +7,19 @@ import { createServer } from "../src/mcp-server.ts";
 const FIXTURE_DB = resolve(import.meta.dir, "fixtures/NoteStore.sqlite");
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
 const MESSAGES_FIXTURE_DB = resolve(import.meta.dir, "fixtures/chat.db");
+const CONTACTS_FIXTURE_DB = resolve(
+  import.meta.dir,
+  "fixtures/AddressBook-v22.abcddb",
+);
 
 let client: Client;
 let cleanup: () => void;
 
 beforeAll(async () => {
-  const { server, notes, messages } = createServer({
+  const { server, notes, messages, contacts } = createServer({
     notes: { dbPath: FIXTURE_DB, containerPath: FIXTURE_DIR },
     messages: { dbPath: MESSAGES_FIXTURE_DB },
+    contacts: { dbPath: CONTACTS_FIXTURE_DB },
   });
 
   const [clientTransport, serverTransport] =
@@ -28,6 +33,7 @@ beforeAll(async () => {
   cleanup = () => {
     notes.close();
     messages.close();
+    contacts.close();
   };
 });
 
@@ -60,9 +66,9 @@ function getErrorJson(result: any) {
 // ============================================================================
 
 describe("server metadata", () => {
-  test("server exposes 15 tools", async () => {
+  test("server exposes 20 tools", async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(15);
+    expect(tools).toHaveLength(20);
   });
 
   test("each tool has a description", async () => {
@@ -80,16 +86,21 @@ describe("server metadata", () => {
       "get_attachment_url",
       "get_capabilities",
       "get_chat",
+      "get_contact",
       "get_message",
       "list_accounts",
       "list_attachments",
       "list_chats",
+      "list_contacts",
       "list_folders",
+      "list_group_members",
+      "list_groups",
       "list_handles",
       "list_message_attachments",
       "list_messages",
       "list_notes",
       "read_note",
+      "search_contacts",
       "search_messages",
       "search_notes",
     ]);
@@ -128,9 +139,10 @@ describe("get_capabilities", () => {
   test("returns data sources with tool lists", async () => {
     const result = await client.callTool({ name: "get_capabilities" });
     const data = parseResult(result);
-    expect(data.dataSources).toHaveLength(2);
+    expect(data.dataSources).toHaveLength(3);
     expect(data.dataSources[0].name).toBe("Apple Notes");
     expect(data.dataSources[1].name).toBe("iMessage / SMS");
+    expect(data.dataSources[2].name).toBe("Apple Contacts");
     expect(data.allToolsReadOnly).toBe(true);
     expect(data.requirement).toContain("Full Disk Access");
   });

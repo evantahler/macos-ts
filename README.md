@@ -109,6 +109,10 @@ Add to your MCP client config (e.g., Claude Desktop, Claude Code):
 
 ### Available Tools
 
+#### Discovery
+
+- **get_capabilities** — Discover available data sources, their tools, and recommended starting points
+
 #### Notes
 
 - **list_accounts** — List all Apple Notes accounts on this Mac
@@ -121,12 +125,43 @@ Add to your MCP client config (e.g., Claude Desktop, Claude Code):
 
 #### Messages
 
+- **list_handles** — List all known contact handles (phone numbers, email addresses)
 - **list_chats** — List iMessage/SMS conversations with optional search, sorting, and limiting
 - **get_chat** — Get details for a specific conversation by ID
 - **list_messages** — List messages in a conversation with date filtering and pagination
 - **get_message** — Get a single message by ID
 - **search_messages** — Search message text across all conversations or within a specific chat
 - **list_message_attachments** — List attachments for a specific message
+
+### Tool Response Format
+
+All tools return responses in a structured envelope:
+
+```json
+{
+  "data": [ ... ],
+  "totalResults": 42,
+  "_next": [
+    { "tool": "read_note", "description": "Read a note's full markdown content" }
+  ]
+}
+```
+
+- **data** — The actual result (array or object)
+- **totalResults** — Count of items (for array results)
+- **_next** — Suggested follow-up tools to call next
+
+Error responses include structured recovery guidance:
+
+```json
+{
+  "error": "NoteNotFoundError",
+  "message": "Note not found: 999",
+  "category": "not_found",
+  "retryable": false,
+  "recovery": "Use list_notes or search_notes to find valid note IDs."
+}
+```
 
 ## API
 

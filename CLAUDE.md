@@ -72,6 +72,74 @@ macos-ts — TypeScript package for accessing macOS data (Notes, Photos, iMessag
 - 2 = Italic
 - 3 = Bold + Italic
 
+## MCP Tool Design Patterns (PATs Framework)
+
+Reference: [Patterns for Agentic Tools](https://arcade.dev/patterns/llm.txt)
+
+When adding or modifying MCP tools in `src/mcp-server.ts`, follow these patterns:
+
+### Tool Classification
+
+- **Query Tool**: Read-only, safe to retry, cacheable, parallelizable (all our tools are this type)
+- **Command Tool**: Has side effects; document irreversibility clearly
+- **Discovery Tool**: Reveals available operations, schema, capabilities
+
+### Tool Interface
+
+- **Descriptions**: Include prerequisites ("Requires a noteId from list_notes") and follow-ups ("Use read_note to get full content") directly in the description string
+- **Constrained Input**: Use enums, ranges, patterns via zod instead of free-form strings
+- **Smart Defaults**: Reduce required parameters with sensible defaults
+- **Natural Identifier**: Accept human-friendly identifiers (names, emails) and resolve internally, not just numeric IDs
+- **Parameter Coercion**: Accept flexible input formats (ISO dates, relative dates, string or number)
+
+### Tool Annotations
+
+Every tool should include MCP `annotations`:
+
+```typescript
+annotations: {
+  title: "Short human label",
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+}
+```
+
+### Error Handling (Error-Guided Recovery)
+
+Errors should teach, not just fail. Every error response should include:
+
+- `error`: machine-readable error name
+- `message`: human-readable description
+- `category`: `"not_found" | "access_denied" | "password_protected" | "invalid_input" | "internal"`
+- `retryable`: boolean
+- `recovery`: specific actionable step (e.g., "Use list_notes to find valid note IDs")
+
+### Response Design
+
+- **Next Action Hints**: Include `_next` array suggesting follow-up tools with descriptions
+- **Token-Efficient**: Include `totalResults` count for list responses so agents don't need to count array items
+- **Progressive Detail**: Summary by default, full detail on request
+- **Response envelope**: `{ data, totalResults?, _next? }` — wraps raw data with metadata
+
+### Tool Discovery
+
+- Provide a `get_capabilities` tool that lists available data sources and their tools
+- Embed dependency hints ("call X before Y") in descriptions and error messages
+
+### Tool Composition
+
+- **Abstraction Ladder**: Provide both granular and higher-level operations
+- **Batch Operation**: Accept arrays for bulk reads, return per-item results
+- **Scatter-Gather**: Query parallel sources, merge results, handle partial failures
+
+### Security
+
+- **Secret Injection**: Credentials at runtime, never through LLM
+- **Permission Gate**: Enforce access control in code before execution
+- **Audit Trail**: Log tool invocations with identity, timestamp, duration
+
 ## Documentation
 
 When adding a new data source or changing the public API, update **both** `README.md` and `CLAUDE.md`. The README should include: a usage example for the TypeScript API, the MCP tools list, error types, and any new development commands.

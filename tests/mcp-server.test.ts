@@ -41,13 +41,18 @@ afterAll(async () => {
 // ============================================================================
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper
-function parseResult(result: any) {
+function parseRaw(result: any) {
   return JSON.parse(result.content[0].text);
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper
-function getErrorText(result: any): string {
-  return result.content[0].text;
+function parseResult(result: any) {
+  return parseRaw(result).data;
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: test helper
+function getErrorJson(result: any) {
+  return JSON.parse(result.content[0].text);
 }
 
 // ============================================================================
@@ -55,9 +60,9 @@ function getErrorText(result: any): string {
 // ============================================================================
 
 describe("server metadata", () => {
-  test("server exposes 13 tools", async () => {
+  test("server exposes 15 tools", async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(13);
+    expect(tools).toHaveLength(15);
   });
 
   test("each tool has a description", async () => {
@@ -73,12 +78,14 @@ describe("server metadata", () => {
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "get_attachment_url",
+      "get_capabilities",
       "get_chat",
       "get_message",
       "list_accounts",
       "list_attachments",
       "list_chats",
       "list_folders",
+      "list_handles",
       "list_message_attachments",
       "list_messages",
       "list_notes",
@@ -98,6 +105,74 @@ describe("server metadata", () => {
     expect(props.query?.description).toBeTruthy();
     expect(props.folder?.description).toBeTruthy();
     expect(props.limit?.description).toBeTruthy();
+  });
+
+  test("all tools have readOnlyHint annotation", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      // biome-ignore lint/suspicious/noExplicitAny: test
+      const annotations = (tool as any).annotations;
+      if (annotations) {
+        expect(annotations.readOnlyHint).toBe(true);
+        expect(annotations.destructiveHint).toBe(false);
+      }
+    }
+  });
+});
+
+// ============================================================================
+// get_capabilities
+// ============================================================================
+
+describe("get_capabilities", () => {
+  test("returns data sources with tool lists", async () => {
+    const result = await client.callTool({ name: "get_capabilities" });
+    const data = parseResult(result);
+    expect(data.dataSources).toHaveLength(2);
+    expect(data.dataSources[0].name).toBe("Apple Notes");
+    expect(data.dataSources[1].name).toBe("iMessage / SMS");
+    expect(data.allToolsReadOnly).toBe(true);
+    expect(data.requirement).toContain("Full Disk Access");
+  });
+
+  test("each data source lists its tools and starting point", async () => {
+    const result = await client.callTool({ name: "get_capabilities" });
+    const data = parseResult(result);
+    for (const source of data.dataSources) {
+      expect(source.tools.length).toBeGreaterThan(0);
+      expect(source.startWith).toBeTruthy();
+    }
+  });
+});
+
+// ============================================================================
+// response envelope
+// ============================================================================
+
+describe("response envelope", () => {
+  test("list tools include totalResults count", async () => {
+    const result = await client.callTool({ name: "list_accounts" });
+    const raw = parseRaw(result);
+    expect(typeof raw.totalResults).toBe("number");
+    expect(raw.totalResults).toBe(raw.data.length);
+  });
+
+  test("list tools include _next hints", async () => {
+    const result = await client.callTool({ name: "list_accounts" });
+    const raw = parseRaw(result);
+    expect(raw._next).toBeDefined();
+    expect(raw._next.length).toBeGreaterThan(0);
+    expect(raw._next[0].tool).toBeTruthy();
+    expect(raw._next[0].description).toBeTruthy();
+  });
+
+  test("terminal tools omit _next hints", async () => {
+    const result = await client.callTool({
+      name: "get_attachment_url",
+      arguments: { name: "nonexistent.png" },
+    });
+    const raw = parseRaw(result);
+    expect(raw._next).toBeUndefined();
   });
 });
 
@@ -306,16 +381,20 @@ describe("read_note", () => {
     expect(typeof page.hasMore).toBe("boolean");
   });
 
-  test("returns error for nonexistent note ID", async () => {
+  test("returns structured error for nonexistent note ID", async () => {
     const result = await client.callTool({
       name: "read_note",
       arguments: { noteId: 999999 },
     });
     expect(result.isError).toBe(true);
-    expect(getErrorText(result)).toContain("Note not found");
+    const err = getErrorJson(result);
+    expect(err.error).toBe("NoteNotFoundError");
+    expect(err.category).toBe("not_found");
+    expect(err.retryable).toBe(false);
+    expect(err.recovery).toContain("list_notes");
   });
 
-  test("returns error for password-protected note", async () => {
+  test("returns structured error for password-protected note", async () => {
     const listResult = await client.callTool({
       name: "list_notes",
       arguments: {},
@@ -331,7 +410,11 @@ describe("read_note", () => {
       arguments: { noteId: locked.id },
     });
     expect(result.isError).toBe(true);
-    expect(getErrorText(result)).toContain("password protected");
+    const err = getErrorJson(result);
+    expect(err.error).toBe("PasswordProtectedError");
+    expect(err.category).toBe("access_denied");
+    expect(err.retryable).toBe(false);
+    expect(err.recovery).toContain("password-protected");
   });
 });
 
@@ -367,6 +450,21 @@ describe("get_attachment_url", () => {
     });
     const data = parseResult(result);
     expect(data.url).toBeNull();
+  });
+});
+
+// ============================================================================
+// list_handles
+// ============================================================================
+
+describe("list_handles", () => {
+  test("returns handles from fixture DB", async () => {
+    const result = await client.callTool({ name: "list_handles" });
+    const handles = parseResult(result);
+    expect(Array.isArray(handles)).toBe(true);
+    expect(handles.length).toBeGreaterThan(0);
+    expect(handles[0].identifier).toBeTruthy();
+    expect(handles[0].service).toBeTruthy();
   });
 });
 

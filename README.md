@@ -1,6 +1,6 @@
 # macos-ts
 
-TypeScript package for accessing macOS data via direct SQLite access — no AppleScript, no network calls. Currently supports **Apple Notes** and **Apple Messages** (iMessage/SMS), with Photos coming soon.
+TypeScript package for accessing macOS data via direct SQLite access — no AppleScript, no network calls. Currently supports **Apple Notes**, **Apple Messages** (iMessage/SMS), and **Apple Contacts**, with Photos coming soon.
 
 ## Requirements
 
@@ -88,6 +88,37 @@ const attachments = db.attachments(messageId);
 db.close();
 ```
 
+### Contacts
+
+```typescript
+import { Contacts } from "macos-ts";
+
+const db = new Contacts();
+
+// List all contacts (filter, sort, search, limit)
+const allContacts = db.contacts();
+const sorted = db.contacts({ sortBy: "modifiedAt", order: "desc", limit: 10 });
+const inGroup = db.contacts({ groupId: 1 });
+
+// Search by name, organization, phone number, or email
+const results = db.search("John");
+const byPhone = db.search("555-1234");
+const byEmail = db.search("alice@example.com");
+
+// Get full contact details (emails, phones, addresses, etc.)
+const details = db.getContact(contactId);
+console.log(details.emails);     // [{ address, label, isPrimary }]
+console.log(details.phones);     // [{ number, label, isPrimary }]
+console.log(details.addresses);  // [{ street, city, state, zipCode, country, label }]
+
+// Groups
+const groups = db.groups();
+const members = db.groupMembers(groupId);
+
+// Cleanup
+db.close();
+```
+
 ## MCP Server
 
 macos-ts includes a stdio MCP server so AI agents can interact with your macOS data.
@@ -133,6 +164,14 @@ Add to your MCP client config (e.g., Claude Desktop, Claude Code):
 - **search_messages** — Search message text across all conversations or within a specific chat
 - **list_message_attachments** — List attachments for a specific message
 
+#### Contacts
+
+- **list_contacts** — List contacts with optional search, sorting (displayName, createdAt, modifiedAt), group filtering, and limit
+- **get_contact** — Get full contact details (emails, phones, addresses, URLs, social profiles, related names, dates)
+- **search_contacts** — Search contacts by name, organization, phone number, or email address
+- **list_groups** — List all contact groups with member counts
+- **list_group_members** — List contacts in a specific group
+
 ### Tool Response Format
 
 All tools return responses in a structured envelope:
@@ -173,6 +212,10 @@ Errors: `DatabaseNotFoundError` (missing DB or no Full Disk Access), `NoteNotFou
 
 Errors: `DatabaseNotFoundError`, `ChatNotFoundError`, `MessageNotFoundError`.
 
+**Contacts**: Pass `dbPath` to `new Contacts()` to override auto-detection (defaults to `~/Library/Application Support/AddressBook/AddressBook-v22.abcddb`). Labels are automatically cleaned from Apple's internal `_$!<Label>!$_` format to plain strings (e.g., "Home", "Work", "Mobile").
+
+Errors: `DatabaseNotFoundError`, `ContactNotFoundError`, `GroupNotFoundError`.
+
 ## Development
 
 ```bash
@@ -181,7 +224,8 @@ bun run lint          # TypeScript type checking + Biome lint
 bun run mcp           # Start the MCP stdio server
 bun tui               # Interactive TUI for browsing and reading notes
 bun run create-fixture # Regenerate the Notes test fixture database
-bun run tests/fixtures/create-messages-db.ts  # Regenerate the Messages test fixture database
+bun run tests/fixtures/create-messages-db.ts   # Regenerate the Messages test fixture database
+bun run tests/fixtures/create-contacts-db.ts   # Regenerate the Contacts test fixture database
 ```
 
 Tests run against a checked-in fixture database — no Full Disk Access needed.

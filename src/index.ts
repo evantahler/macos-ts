@@ -1,3 +1,27 @@
+export type {
+  Contact,
+  ContactAddress,
+  ContactDate,
+  ContactDetails,
+  ContactEmail,
+  ContactId,
+  ContactPhone,
+  ContactRelatedName,
+  ContactSocialProfile,
+  ContactSortField,
+  ContactsOptions,
+  ContactURL,
+  Group,
+  GroupId,
+  ListContactsOptions,
+  ListGroupsOptions,
+  SearchContactsOptions,
+} from "./contacts/index.ts";
+export {
+  ContactNotFoundError,
+  Contacts,
+  GroupNotFoundError,
+} from "./contacts/index.ts";
 export {
   DatabaseAccessDeniedError,
   DatabaseNotFoundError,

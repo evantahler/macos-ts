@@ -30,7 +30,7 @@ export function registerMessagesTools(
     {
       title: "List message handles",
       description:
-        "List all known contact handles (phone numbers, email addresses) from iMessage/SMS. Returns identifier (phone/email), service type (iMessage/SMS), and numeric ID. Useful for identifying senders in message results.",
+        "List all known contact handles (phone numbers, email addresses) from iMessage/SMS. Returns identifier (phone/email), service type (iMessage/SMS), and numeric ID. Useful for identifying senders in message results. If the Apple Contacts data source is available, pass a handle's identifier to search_contacts to resolve it to a real person (name, organization, other contact details).",
       annotations: readOnlyAnnotations,
     },
     async () =>
@@ -41,6 +41,11 @@ export function registerMessagesTools(
             tool: "list_chats",
             description: "Find conversations with a contact",
           },
+          {
+            tool: "search_contacts",
+            description:
+              "Resolve a handle (phone/email) to a contact in Apple Contacts, if available",
+          },
         ],
       ),
   );
@@ -50,7 +55,7 @@ export function registerMessagesTools(
     {
       title: "List conversations",
       description:
-        "List iMessage/SMS conversations with display names, participants, service type, and last message date. Supports search by name or phone number. Follow-up: use list_messages with a chatId to read the conversation.",
+        "List iMessage/SMS conversations with display names, participants, service type, and last message date. Supports search by name or phone number. Follow-up: use list_messages with a chatId to read the conversation. Participants are identified by handle (phone/email); if the Apple Contacts data source is available, pass a handle to search_contacts to resolve it to a real person.",
       annotations: readOnlyAnnotations,
       inputSchema: {
         search: z
@@ -84,6 +89,11 @@ export function registerMessagesTools(
             tool: "list_messages",
             description: "Read messages in a conversation",
           },
+          {
+            tool: "search_contacts",
+            description:
+              "Resolve a participant handle (phone/email) to a contact in Apple Contacts, if available",
+          },
         ],
       ),
   );
@@ -93,7 +103,7 @@ export function registerMessagesTools(
     {
       title: "Get conversation details",
       description:
-        "Get details for a specific conversation. Requires a chatId from list_chats. Returns participants and metadata. Follow-up: use list_messages to read messages.",
+        "Get details for a specific conversation. Requires a chatId from list_chats. Returns participants and metadata. Follow-up: use list_messages to read messages. Participants are identified by handle (phone/email); if the Apple Contacts data source is available, pass a handle to search_contacts to resolve it to a real person.",
       annotations: readOnlyAnnotations,
       inputSchema: {
         chatId: z
@@ -110,6 +120,11 @@ export function registerMessagesTools(
             tool: "list_messages",
             description: "Read messages in this conversation",
           },
+          {
+            tool: "search_contacts",
+            description:
+              "Resolve a participant handle (phone/email) to a contact in Apple Contacts, if available",
+          },
         ],
       ),
   );
@@ -119,7 +134,7 @@ export function registerMessagesTools(
     {
       title: "List messages",
       description:
-        "List messages in a conversation. Requires a chatId from list_chats. Supports date filtering (ISO 8601), direction filtering (fromMe), and limiting. Follow-up: use get_message for details or list_message_attachments for media.",
+        "List messages in a conversation. Requires a chatId from list_chats. Supports date filtering (ISO 8601), direction filtering (fromMe), and limiting. Follow-up: use get_message for details or list_message_attachments for media. Senders are identified by handle (phone/email); if the Apple Contacts data source is available, pass a sender's handle to search_contacts to resolve it to a real person.",
       annotations: readOnlyAnnotations,
       inputSchema: {
         chatId: z
@@ -175,6 +190,11 @@ export function registerMessagesTools(
             tool: "list_message_attachments",
             description: "Get attachments for a message",
           },
+          {
+            tool: "search_contacts",
+            description:
+              "Resolve a sender handle (phone/email) to a contact in Apple Contacts, if available",
+          },
         ],
       ),
   );
@@ -184,7 +204,7 @@ export function registerMessagesTools(
     {
       title: "Get message",
       description:
-        "Get a single message by ID (from list_messages or search_messages). Returns full text, sender, date, and metadata. Follow-up: use list_message_attachments for attached media.",
+        "Get a single message by ID (from list_messages or search_messages). Returns full text, sender, date, and metadata. Follow-up: use list_message_attachments for attached media. The sender is identified by handle (phone/email); if the Apple Contacts data source is available, pass the handle to search_contacts to resolve it to a real person.",
       annotations: readOnlyAnnotations,
       inputSchema: {
         messageId: z
@@ -203,6 +223,11 @@ export function registerMessagesTools(
             tool: "list_message_attachments",
             description: "Get attachments for this message",
           },
+          {
+            tool: "search_contacts",
+            description:
+              "Resolve the sender handle (phone/email) to a contact in Apple Contacts, if available",
+          },
         ],
       ),
   );
@@ -212,7 +237,7 @@ export function registerMessagesTools(
     {
       title: "Search messages",
       description:
-        "Search message text across all conversations or within a specific chat (chatId from list_chats). Follow-up: use get_message or list_message_attachments with a messageId.",
+        "Search message text across all conversations or within a specific chat (chatId from list_chats). Follow-up: use get_message or list_message_attachments with a messageId. Senders are identified by handle (phone/email); if the Apple Contacts data source is available, pass a sender's handle to search_contacts to resolve it to a real person.",
       annotations: readOnlyAnnotations,
       inputSchema: {
         query: z.string().describe("Text to search for in message content."),
@@ -233,7 +258,14 @@ export function registerMessagesTools(
     async ({ query, chatId, limit }) =>
       wrapTool(
         () => messages.search(query, { chatId, limit }),
-        [{ tool: "get_message", description: "Get full message details" }],
+        [
+          { tool: "get_message", description: "Get full message details" },
+          {
+            tool: "search_contacts",
+            description:
+              "Resolve a sender handle (phone/email) to a contact in Apple Contacts, if available",
+          },
+        ],
       ),
   );
 

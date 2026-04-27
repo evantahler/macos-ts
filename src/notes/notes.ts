@@ -146,11 +146,24 @@ export class Notes {
   // file path on success (no file:// prefix).
   resolveAttachment(attachmentId: string): ResolveResult {
     const media = this.reader.resolveMediaIdentifier(attachmentId);
+    let firstError: ResolveResult | undefined;
     if (media) {
       const r = this.attachmentResolver.resolveDetailed(media.mediaIdentifier);
       if ("path" in r) return r;
+      firstError = r;
     }
-    return this.attachmentResolver.resolveDetailed(attachmentId);
+    const second = this.attachmentResolver.resolveDetailed(attachmentId);
+    if ("path" in second) return second;
+    // Prefer permission-denied over not-found so an access problem on the
+    // media path isn't masked by a not-found on the attachment-id fallback.
+    if (
+      firstError &&
+      "error" in firstError &&
+      firstError.error === "permission-denied"
+    ) {
+      return firstError;
+    }
+    return second;
   }
 
   private resolveTableAttachments(

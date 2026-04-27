@@ -404,6 +404,34 @@ describe("listAttachments", () => {
     const attachments = db.listAttachments(100);
     expect(attachments).toHaveLength(0);
   });
+
+  test("attachment.name falls back to ZMEDIA filename when ZFILENAME is NULL", () => {
+    // Note 110's attachment row has ZFILENAME=NULL but its ZMEDIA row has
+    // ZFILENAME='photo.jpg' — getAttachments uses COALESCE on the join.
+    const attachments = db.listAttachments(110);
+    expect(attachments[0]?.name).toBe("photo.jpg");
+  });
+});
+
+// ============================================================================
+// resolveAttachment()
+// ============================================================================
+
+describe("resolveAttachment", () => {
+  test("returns { path } for an attachment that exists on disk", () => {
+    const result = db.resolveAttachment("ATTACH-UUID-001");
+    expect("path" in result).toBe(true);
+    if ("path" in result) {
+      expect(result.path).not.toStartWith("file://");
+      expect(result.path).toContain("MEDIA-UUID-001");
+      expect(result.path).toContain("photo.jpg");
+    }
+  });
+
+  test("returns { error: 'not-found' } for an unknown identifier", () => {
+    const result = db.resolveAttachment("NONEXISTENT-UUID");
+    expect(result).toEqual({ error: "not-found" });
+  });
 });
 
 // ============================================================================

@@ -5,6 +5,7 @@ import type {
   DecodedNote,
   DecodedTable,
 } from "../src/notes/protobuf/decode.ts";
+import type { AttachmentRef } from "../src/notes/types.ts";
 
 function note(text: string, runs: DecodedAttributeRun[]): DecodedNote {
   return { text, attributeRuns: runs };
@@ -239,6 +240,65 @@ describe("noteToMarkdown", () => {
       ]),
     );
     expect(md).toContain("![attachment](attachment:UUID-123?type=public.jpeg)");
+  });
+
+  test("renders attachment as ![name](builtUrl) when attachmentLinkBuilder is provided", () => {
+    const decoded = note("Before\n\uFFFC\nAfter\n", [
+      { length: 7 },
+      {
+        length: 1,
+        attachmentInfo: {
+          attachmentIdentifier: "UUID-123",
+          typeUti: "public.jpeg",
+        },
+      },
+      { length: 1 },
+      { length: 6 },
+    ]);
+    const attachments: AttachmentRef[] = [
+      {
+        id: 42,
+        identifier: "UUID-123",
+        name: "diagram.png",
+        contentType: "public.jpeg",
+        url: null,
+      },
+    ];
+    let received:
+      | { identifier: string; name: string; contentType: string }
+      | undefined;
+    const md = noteToMarkdown(decoded, undefined, attachments, {
+      attachmentLinkBuilder: (info) => {
+        received = info;
+        return `./attachments/${info.name}`;
+      },
+    });
+    expect(md).toContain("![diagram.png](./attachments/diagram.png)");
+    expect(md).not.toContain("attachment:UUID-123");
+    expect(received).toEqual({
+      identifier: "UUID-123",
+      name: "diagram.png",
+      contentType: "public.jpeg",
+    });
+  });
+
+  test("falls back to placeholder when builder is provided but no matching attachment row", () => {
+    const md = noteToMarkdown(
+      note("\uFFFC\n", [
+        {
+          length: 1,
+          attachmentInfo: {
+            attachmentIdentifier: "UNKNOWN",
+            typeUti: "public.png",
+          },
+        },
+        { length: 1 },
+      ]),
+      undefined,
+      [],
+      { attachmentLinkBuilder: () => "./somewhere" },
+    );
+    expect(md).toContain("![attachment](attachment:UNKNOWN?type=public.png)");
   });
 
   test("renders mixed formatting in one note", () => {

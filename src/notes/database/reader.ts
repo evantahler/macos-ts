@@ -7,7 +7,7 @@ import type {
   NoteMeta,
   SearchOptions,
 } from "../types.ts";
-import type { DateColumns } from "./queries.ts";
+import type { AttachmentColumns, DateColumns } from "./queries.ts";
 import * as Q from "./queries.ts";
 
 interface EntityTypes {
@@ -61,6 +61,7 @@ export class NoteReader {
   private db: Database;
   private entityTypes: EntityTypes;
   private dateColumns: DateColumns;
+  private attachmentColumns: AttachmentColumns;
   private folderCache: Map<number, { name: string; accountId: number }> =
     new Map();
   private accountCache: Map<number, string> = new Map();
@@ -69,6 +70,7 @@ export class NoteReader {
     this.db = db;
     this.entityTypes = this.discoverEntityTypes();
     this.dateColumns = this.discoverDateColumns();
+    this.attachmentColumns = this.discoverAttachmentColumns();
     this.buildCaches();
   }
 
@@ -137,6 +139,28 @@ export class NoteReader {
     }
 
     return candidates[0] ?? null;
+  }
+
+  private discoverAttachmentColumns(): AttachmentColumns {
+    // The attachment→note FK column varies by macOS version: older schemas
+    // use ZNOTE1, newer use ZNOTE. Pick whichever has non-NULL data on
+    // attachment rows; fall back to ZNOTE1 for back-compat with test fixtures.
+    const rows = this.db
+      .query("PRAGMA table_info(ZICCLOUDSYNCINGOBJECT)")
+      .all() as ColumnInfoRow[];
+    const columns = rows.map((r) => r.name);
+    const candidates = ["ZNOTE", "ZNOTE1"].filter((c) => columns.includes(c));
+
+    for (const col of candidates) {
+      const row = this.db
+        .query(
+          `SELECT ${col} as v FROM ZICCLOUDSYNCINGOBJECT WHERE ${col} IS NOT NULL AND Z_ENT = ? LIMIT 1`,
+        )
+        .get(this.entityTypes.attachment) as { v: number } | null;
+      if (row) return { noteFk: col };
+    }
+
+    return { noteFk: candidates[0] ?? "ZNOTE1" };
   }
 
   private buildCaches(): void {
@@ -349,7 +373,7 @@ export class NoteReader {
 
   listAttachments(noteId: number): AttachmentRef[] {
     const rows = this.db
-      .query(Q.GET_ATTACHMENTS)
+      .query(Q.getAttachments(this.attachmentColumns))
       .all(noteId, this.entityTypes.attachment) as AttachmentRow[];
 
     return rows.map((r) => ({

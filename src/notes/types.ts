@@ -51,6 +51,21 @@ export interface AttachmentRef {
   url: string | null;
 }
 
+// Info passed to a caller-supplied attachmentLinkBuilder when rendering
+// markdown. The caller decides what URL/path to substitute for each attachment.
+export interface AttachmentLinkInfo {
+  identifier: string;
+  name: string;
+  contentType: string;
+}
+
+export interface ReadOptions {
+  // When provided, attachments in rendered markdown become
+  // `![${name}](${builder(info)})` instead of the default
+  // `![attachment](attachment:${id}?type=${uti})` placeholder URI.
+  attachmentLinkBuilder?: (info: AttachmentLinkInfo) => string;
+}
+
 export type NoteSortField = "title" | "createdAt" | "modifiedAt";
 
 import type { SortOrder } from "../types.ts";

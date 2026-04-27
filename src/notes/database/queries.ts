@@ -9,6 +9,11 @@ export interface DateColumns {
   modifiedAt: string;
 }
 
+export interface AttachmentColumns {
+  // FK from attachment row → note row. Older schemas use ZNOTE1, newer ZNOTE.
+  noteFk: string;
+}
+
 // Entity types in ZICCLOUDSYNCINGOBJECT.Z_ENT
 // These vary by macOS version. We discover them at runtime.
 
@@ -114,15 +119,16 @@ export const searchBySnippet = (dateCols: DateColumns) => `
   LIMIT ?
 `;
 
-export const GET_ATTACHMENTS = `
+export const getAttachments = (cols: AttachmentColumns) => `
   SELECT
     a.Z_PK as id,
     a.ZIDENTIFIER as identifier,
-    a.ZFILENAME as name,
+    COALESCE(NULLIF(a.ZFILENAME, ''), m.ZFILENAME) as name,
     a.ZTYPEUTI as contentType,
-    a.ZNOTE1 as noteId
+    a.${cols.noteFk} as noteId
   FROM ZICCLOUDSYNCINGOBJECT a
-  WHERE a.ZNOTE1 = ?
+  LEFT JOIN ZICCLOUDSYNCINGOBJECT m ON m.Z_PK = a.ZMEDIA
+  WHERE a.${cols.noteFk} = ?
     AND a.ZTYPEUTI IS NOT NULL
     AND a.Z_ENT = ?
 `;

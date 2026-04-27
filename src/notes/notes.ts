@@ -1,6 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { openFullDiskAccessSettings } from "../errors.ts";
-import { AttachmentResolver } from "./attachments/resolver.ts";
+import {
+  AttachmentResolver,
+  type ResolveResult,
+} from "./attachments/resolver.ts";
 import { noteToMarkdown } from "./conversion/proto-to-markdown.ts";
 import { openDatabase } from "./database/connection.ts";
 import { NoteReader } from "./database/reader.ts";
@@ -19,6 +22,7 @@ import type {
   NoteContentPage,
   NoteMeta,
   PaginationOptions,
+  ReadOptions,
   SearchOptions,
 } from "./types.ts";
 
@@ -42,12 +46,30 @@ export class Notes {
     return this.reader.search(query, options);
   }
 
-  read(noteId: number): NoteContent;
-  read(noteId: number, pagination: PaginationOptions): NoteContentPage;
+  read(noteId: number, options?: ReadOptions): NoteContent;
   read(
     noteId: number,
-    pagination?: PaginationOptions,
+    pagination: PaginationOptions,
+    options?: ReadOptions,
+  ): NoteContentPage;
+  read(
+    noteId: number,
+    paginationOrOptions?: PaginationOptions | ReadOptions,
+    maybeOptions?: ReadOptions,
   ): NoteContent | NoteContentPage {
+    // Disambiguate: a PaginationOptions has offset|limit; a ReadOptions has
+    // attachmentLinkBuilder. The single-arg form may be either.
+    let pagination: PaginationOptions | undefined;
+    let options: ReadOptions | undefined;
+    if (paginationOrOptions) {
+      if ("offset" in paginationOrOptions || "limit" in paginationOrOptions) {
+        pagination = paginationOrOptions as PaginationOptions;
+        options = maybeOptions;
+      } else {
+        options = paginationOrOptions as ReadOptions;
+      }
+    }
+
     const result = this.reader.getNote(noteId);
     if (!result) throw new NoteNotFoundError(noteId);
 
@@ -61,7 +83,10 @@ export class Notes {
     if (zdata) {
       const decoded = decodeNoteData(zdata);
       const tables = this.resolveTableAttachments(decoded);
-      markdown = noteToMarkdown(decoded, tables);
+      const attachments = options?.attachmentLinkBuilder
+        ? this.listAttachments(noteId)
+        : undefined;
+      markdown = noteToMarkdown(decoded, tables, attachments, options);
     }
 
     if (pagination) {
@@ -114,6 +139,18 @@ export class Notes {
 
     // Fall back to resolving directly by the attachment identifier
     return this.attachmentResolver.resolve(attachmentId);
+  }
+
+  // Like getAttachmentUrl, but returns a structured result so callers can
+  // distinguish "not-found" from "permission-denied". Returns the absolute
+  // file path on success (no file:// prefix).
+  resolveAttachment(attachmentId: string): ResolveResult {
+    const media = this.reader.resolveMediaIdentifier(attachmentId);
+    if (media) {
+      const r = this.attachmentResolver.resolveDetailed(media.mediaIdentifier);
+      if ("path" in r) return r;
+    }
+    return this.attachmentResolver.resolveDetailed(attachmentId);
   }
 
   private resolveTableAttachments(

@@ -3,6 +3,11 @@ import type {
   DecodedNote,
   DecodedTable,
 } from "../protobuf/decode.ts";
+import type {
+  AttachmentLinkInfo,
+  AttachmentRef,
+  ReadOptions,
+} from "../types.ts";
 
 // ParagraphStyle.style_type values (from notestore.proto)
 const STYLE_TITLE = 0;
@@ -22,6 +27,8 @@ const FONT_WEIGHT_BOLD_ITALIC = 3;
 export function noteToMarkdown(
   note: DecodedNote,
   tables?: Map<string, DecodedTable>,
+  attachments?: AttachmentRef[],
+  options?: ReadOptions,
 ): string {
   if (!note.text) return "";
 
@@ -29,6 +36,19 @@ export function noteToMarkdown(
   const lines = splitIntoLines(text, attributeRuns);
   const mdLines: string[] = [];
   let inCodeBlock = false;
+
+  // Build identifier → AttachmentLinkInfo lookup for the link builder.
+  const linkInfo = new Map<string, AttachmentLinkInfo>();
+  if (attachments) {
+    for (const a of attachments) {
+      if (!a.identifier) continue;
+      linkInfo.set(a.identifier, {
+        identifier: a.identifier,
+        name: a.name,
+        contentType: a.contentType,
+      });
+    }
+  }
 
   for (const line of lines) {
     const isCode = line.paragraphStyle?.styleType === STYLE_MONOSPACED;
@@ -49,7 +69,7 @@ export function noteToMarkdown(
       if (tableMarkdown != null) {
         mdLines.push(tableMarkdown);
       } else {
-        mdLines.push(renderLine(line));
+        mdLines.push(renderLine(line, linkInfo, options));
       }
     }
   }
@@ -136,12 +156,21 @@ function splitIntoLines(
   return lines;
 }
 
-function renderLine(line: LineParts): string {
+function renderLine(
+  line: LineParts,
+  linkInfo: Map<string, AttachmentLinkInfo>,
+  options?: ReadOptions,
+): string {
   const style = line.paragraphStyle;
   const styleType = style?.styleType;
   const indent = style?.indentAmount ?? 0;
   const indentStr = "  ".repeat(indent);
-  const inlineText = renderInlineFormatting(line.text, line.runs);
+  const inlineText = renderInlineFormatting(
+    line.text,
+    line.runs,
+    linkInfo,
+    options,
+  );
 
   // Title (first line of note) → # heading
   if (styleType === STYLE_TITLE) {
@@ -185,6 +214,8 @@ function renderLine(line: LineParts): string {
 function renderInlineFormatting(
   text: string,
   runs: DecodedAttributeRun[],
+  linkInfo: Map<string, AttachmentLinkInfo>,
+  options?: ReadOptions,
 ): string {
   if (runs.length === 0) return text;
 
@@ -201,7 +232,15 @@ function renderInlineFormatting(
     if (run.attachmentInfo?.attachmentIdentifier) {
       const id = run.attachmentInfo.attachmentIdentifier;
       const uti = run.attachmentInfo.typeUti ?? "unknown";
-      result += `![attachment](attachment:${id}?type=${uti})`;
+      const builder = options?.attachmentLinkBuilder;
+      const info = linkInfo.get(id);
+      if (builder && info) {
+        const url = builder(info);
+        const label = info.name || "attachment";
+        result += `![${label}](${url})`;
+      } else {
+        result += `![attachment](attachment:${id}?type=${uti})`;
+      }
       continue;
     }
 

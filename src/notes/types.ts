@@ -86,6 +86,12 @@ export interface ListNotesOptions {
   limit?: number;
 }
 
+export interface ListAttachmentsOptions {
+  // Include inline attachments that have no on-disk file (tables, galleries,
+  // hashtags, mentions, inline links, URL chips). Defaults to false.
+  includeInlineAttachments?: boolean;
+}
+
 export interface PaginationOptions {
   offset?: number;
   limit?: number;

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { Notes } from "../src/index.ts";
+import { isFileBackedAttachment, Notes } from "../src/index.ts";
 import {
   NoteNotFoundError,
   PasswordProtectedError,
@@ -410,6 +410,76 @@ describe("listAttachments", () => {
     // ZFILENAME='photo.jpg' — getAttachments uses COALESCE on the join.
     const attachments = db.listAttachments(110);
     expect(attachments[0]?.name).toBe("photo.jpg");
+  });
+
+  test("filters out inline (non-file) attachments by default", () => {
+    // Note 110 has both a public.jpeg row (file-backed) and a public.url row
+    // (inline URL chip — no file on disk). Default output should only include
+    // the file-backed one.
+    const attachments = db.listAttachments(110);
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]?.contentType).toBe("public.jpeg");
+  });
+
+  test("includes inline attachments when includeInlineAttachments=true", () => {
+    const attachments = db.listAttachments(110, {
+      includeInlineAttachments: true,
+    });
+    const types = attachments.map((a) => a.contentType).sort();
+    expect(types).toEqual(["public.jpeg", "public.url"]);
+  });
+
+  test("table-only note returns [] by default", () => {
+    // Note 113 only has a com.apple.notes.table attachment (inline).
+    const attachments = db.listAttachments(113);
+    expect(attachments).toHaveLength(0);
+  });
+
+  test("table-only note returns the table when includeInlineAttachments=true", () => {
+    const attachments = db.listAttachments(113, {
+      includeInlineAttachments: true,
+    });
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]?.contentType).toBe("com.apple.notes.table");
+  });
+});
+
+// ============================================================================
+// isFileBackedAttachment()
+// ============================================================================
+
+describe("isFileBackedAttachment", () => {
+  test("returns true for typical file-backed UTIs", () => {
+    expect(isFileBackedAttachment("public.jpeg")).toBe(true);
+    expect(isFileBackedAttachment("public.png")).toBe(true);
+    expect(isFileBackedAttachment("com.apple.paper.doc.pdf")).toBe(true);
+    expect(isFileBackedAttachment("com.adobe.pdf")).toBe(true);
+  });
+
+  test("returns false for known inline UTIs", () => {
+    expect(isFileBackedAttachment("com.apple.notes.table")).toBe(false);
+    expect(isFileBackedAttachment("com.apple.notes.gallery")).toBe(false);
+    expect(isFileBackedAttachment("public.url")).toBe(false);
+  });
+
+  test("returns false for any com.apple.notes.inlinetextattachment.* subtype", () => {
+    expect(
+      isFileBackedAttachment("com.apple.notes.inlinetextattachment.hashtag"),
+    ).toBe(false);
+    expect(
+      isFileBackedAttachment("com.apple.notes.inlinetextattachment.mention"),
+    ).toBe(false);
+    expect(
+      isFileBackedAttachment("com.apple.notes.inlinetextattachment.link"),
+    ).toBe(false);
+    // future-proof: unknown subtypes are still treated as inline
+    expect(
+      isFileBackedAttachment("com.apple.notes.inlinetextattachment.foo"),
+    ).toBe(false);
+  });
+
+  test("returns false for empty string", () => {
+    expect(isFileBackedAttachment("")).toBe(false);
   });
 });
 

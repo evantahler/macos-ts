@@ -1,3 +1,7 @@
+export {
+  INLINE_ATTACHMENT_TYPES,
+  isFileBackedAttachment,
+} from "./attachments/content-types.ts";
 export type { ResolveResult } from "./attachments/resolver.ts";
 export { NoteNotFoundError, PasswordProtectedError } from "./errors.ts";
 export type { NotesOptions } from "./notes.ts";
@@ -10,6 +14,7 @@ export type {
   AttachmentRef,
   Folder,
   FolderId,
+  ListAttachmentsOptions,
   ListNotesOptions,
   NoteContent,
   NoteContentPage,

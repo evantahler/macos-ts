@@ -572,6 +572,15 @@ db.query(
    VALUES (?, ${ENT_ATTACHMENT}, 1, ?, 'photo.jpg')`,
 ).run(mediaPk, mediaId);
 
+// Inline URL chip on note 110 — has no file on disk; should be filtered from
+// the default listAttachments() output. Same shape as the rows that show up
+// when a note contains a pasted URL preview.
+db.query(
+  `INSERT INTO ZICCLOUDSYNCINGOBJECT
+   (Z_PK, Z_ENT, Z_OPT, ZIDENTIFIER, ZFILENAME, ZTYPEUTI, ZNOTE1)
+   VALUES (304, ${ENT_ATTACHMENT}, 1, 'URL-ATTACH-UUID-001', NULL, 'public.url', 110)`,
+).run();
+
 // Note 12: Inline code
 // "Inline Code Note\n" = 17, "Use the " = 8, "console.log" = 11, " function in your code.\n" = 24
 insertNote({

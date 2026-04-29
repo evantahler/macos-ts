@@ -46,9 +46,16 @@ console.log(page.markdown);      // first 100 lines
 console.log(page.hasMore);       // true if more lines follow
 console.log(page.totalLines);    // total line count
 
-// Attachments
+// Attachments — file-backed only by default (URL chips, hashtags, mentions,
+// tables, and galleries live inline in the note body and have no file on disk)
 const attachments = db.listAttachments(noteId);
+const allAttachments = db.listAttachments(noteId, { includeInlineAttachments: true });
 const url = db.getAttachmentUrl("attachment-uuid"); // file:// URL or null
+
+// Or check a content type directly
+import { isFileBackedAttachment } from "macos-ts";
+isFileBackedAttachment("public.jpeg"); // true
+isFileBackedAttachment("public.url");  // false
 
 // Cleanup
 db.close();
@@ -189,7 +196,7 @@ Add to your MCP client config (e.g., Claude Desktop, Claude Code):
 - **list_notes** — List notes with optional filtering (folder, account, text search), sorting (title, createdAt, modifiedAt), and limit
 - **search_notes** — Search notes by title and content
 - **read_note** — Read a note as markdown (supports pagination)
-- **list_attachments** — List attachments for a note
+- **list_attachments** — List file-backed attachments for a note (set `includeInlineAttachments=true` to also return inline rows like URL chips, hashtags, mentions, tables, and galleries)
 - **get_attachment_url** — Get the file URL for an attachment
 
 #### Messages

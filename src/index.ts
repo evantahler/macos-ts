@@ -53,6 +53,7 @@ export type {
   AttachmentRef,
   Folder,
   FolderId,
+  ListAttachmentsOptions,
   ListNotesOptions,
   NoteContent,
   NoteContentPage,
@@ -64,6 +65,8 @@ export type {
   SearchOptions,
 } from "./notes/index.ts";
 export {
+  INLINE_ATTACHMENT_TYPES,
+  isFileBackedAttachment,
   NoteNotFoundError,
   Notes,
   PasswordProtectedError,

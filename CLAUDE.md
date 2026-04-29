@@ -26,6 +26,7 @@ macos-ts — TypeScript package for accessing macOS data (Notes, Photos, iMessag
 - **Markdown conversion**: Custom converter walks protobuf AttributeRun entries to emit markdown
 - **Entity types**: Discovered at runtime from `Z_PRIMARYKEY` table (ICAccount, ICFolder, ICNote, ICAttachment)
 - **Mac timestamps (Notes)**: Seconds since 2001-01-01 (add 978307200 for Unix epoch)
+- **Notes attachments**: `listAttachments(noteId)` filters out inline ZTYPEUTI values (`com.apple.notes.table`, `com.apple.notes.gallery`, `public.url`, and any `com.apple.notes.inlinetextattachment.*`) by default since they have no on-disk file. Pass `{ includeInlineAttachments: true }` to opt in. Helper `isFileBackedAttachment(contentType)` is exported for advanced consumers (defined in `src/notes/attachments/content-types.ts`).
 - **Messages database**: `~/Library/Messages/chat.db` — standard relational schema (handle, chat, message, attachment tables joined via junction tables)
 - **Mac timestamps (Messages)**: Nanoseconds since 2001-01-01 (divide by 1e9, then add 978307200 for Unix epoch)
 - **Message text**: Stored in `text` column, or as NSArchiver-encoded `attributedBody` blob when rich text

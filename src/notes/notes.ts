@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { openFullDiskAccessSettings } from "../errors.ts";
+import { isFileBackedAttachment } from "./attachments/content-types.ts";
 import {
   AttachmentResolver,
   type ResolveResult,
@@ -17,6 +18,7 @@ import type {
   Account,
   AttachmentRef,
   Folder,
+  ListAttachmentsOptions,
   ListNotesOptions,
   NoteContent,
   NoteContentPage,
@@ -84,7 +86,7 @@ export class Notes {
       const decoded = decodeNoteData(zdata);
       const tables = this.resolveTableAttachments(decoded);
       const attachments = options?.attachmentLinkBuilder
-        ? this.listAttachments(noteId)
+        ? this.listAttachments(noteId, { includeInlineAttachments: true })
         : undefined;
       markdown = noteToMarkdown(decoded, tables, attachments, options);
     }
@@ -120,9 +122,15 @@ export class Notes {
     return this.reader.listNotes(options).map((r) => r.meta);
   }
 
-  listAttachments(noteId: number): AttachmentRef[] {
+  listAttachments(
+    noteId: number,
+    options?: ListAttachmentsOptions,
+  ): AttachmentRef[] {
     const refs = this.reader.listAttachments(noteId);
-    return refs.map((ref) => ({
+    const filtered = options?.includeInlineAttachments
+      ? refs
+      : refs.filter((r) => isFileBackedAttachment(r.contentType));
+    return filtered.map((ref) => ({
       ...ref,
       url: this.getAttachmentUrl(ref.identifier || ref.name),
     }));

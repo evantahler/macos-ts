@@ -207,18 +207,24 @@ export function registerNotesTools(
     {
       title: "List note attachments",
       description:
-        "List all attachments for a note. Requires a noteId from list_notes or search_notes. Follow-up: use get_attachment_url with a filename to get the local file path.",
+        "List file-backed attachments for a note. By default, inline attachments without files on disk (tables, galleries, hashtags, mentions, URL chips) are filtered out — set includeInlineAttachments=true to include them. Requires a noteId from list_notes or search_notes. Follow-up: use get_attachment_url with a filename to get the local file path.",
       annotations: readOnlyAnnotations,
       inputSchema: {
         noteId: z
           .number()
           .int()
           .describe("Numeric note ID to get attachments for."),
+        includeInlineAttachments: z
+          .boolean()
+          .optional()
+          .describe(
+            "Include inline attachments without files on disk (tables, galleries, hashtags, mentions, URL chips). Defaults to false.",
+          ),
       },
     },
-    async ({ noteId }) =>
+    async ({ noteId, includeInlineAttachments }) =>
       wrapTool(
-        () => notes.listAttachments(noteId),
+        () => notes.listAttachments(noteId, { includeInlineAttachments }),
         [
           {
             tool: "get_attachment_url",

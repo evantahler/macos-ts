@@ -98,6 +98,62 @@ export const LIST_CONTACT_NOTE = `
   FROM ZABCDNOTE WHERE ZCONTACT = ?
 `;
 
+// One query that fetches every detail table for a single contact via UNION ALL.
+// Each subquery returns (kind, payload-as-json), so the JS side demuxes by
+// `kind` and parses the JSON payload. Replaces 9 separate queries with 1.
+// Each `?` binds the same contactId; bun:sqlite's .all() takes them positionally.
+export const GET_CONTACT_BUNDLE = `
+  SELECT 'contact' AS kind, json_object(
+    'id', r.Z_PK,
+    'firstName', r.ZFIRSTNAME,
+    'lastName', r.ZLASTNAME,
+    'organization', r.ZORGANIZATION,
+    'jobTitle', r.ZJOBTITLE,
+    'department', r.ZDEPARTMENT,
+    'birthday', r.ZBIRTHDAY,
+    'createdAt', r.ZCREATIONDATE,
+    'modifiedAt', r.ZMODIFICATIONDATE,
+    'hasImage', CASE WHEN r.ZIMAGEDATA IS NOT NULL THEN 1 ELSE 0 END
+  ) AS payload
+  FROM ZABCDRECORD r WHERE r.Z_PK = ? AND r.Z_ENT = 22
+
+  UNION ALL SELECT 'note', json_object('text', ZTEXT)
+    FROM ZABCDNOTE WHERE ZCONTACT = ?
+
+  UNION ALL SELECT 'email', json_object(
+    'address', ZADDRESS, 'label', ZLABEL, 'isPrimary', ZISPRIMARY,
+    'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDEMAILADDRESS WHERE ZOWNER = ?
+
+  UNION ALL SELECT 'phone', json_object(
+    'number', ZFULLNUMBER, 'label', ZLABEL, 'isPrimary', ZISPRIMARY,
+    'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDPHONENUMBER WHERE ZOWNER = ?
+
+  UNION ALL SELECT 'address', json_object(
+    'street', ZSTREET, 'city', ZCITY, 'state', ZSTATE,
+    'zipCode', ZZIPCODE, 'country', ZCOUNTRYNAME, 'label', ZLABEL,
+    'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDPOSTALADDRESS WHERE ZOWNER = ?
+
+  UNION ALL SELECT 'url', json_object(
+    'url', ZURL, 'label', ZLABEL, 'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDURLADDRESS WHERE ZOWNER = ?
+
+  UNION ALL SELECT 'social', json_object(
+    'url', ZURLSTRING, 'username', ZUSERIDENTIFIER, 'service', ZSERVICENAME,
+    'label', ZLABEL, 'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDSOCIALPROFILE WHERE ZOWNER = ?
+
+  UNION ALL SELECT 'related', json_object(
+    'name', ZNAME, 'label', ZLABEL, 'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDRELATEDNAME WHERE ZOWNER = ?
+
+  UNION ALL SELECT 'date', json_object(
+    'date', ZDATE, 'label', ZLABEL, 'orderingIndex', ZORDERINGINDEX
+  ) FROM ZABCDCONTACTDATE WHERE ZOWNER = ?
+`;
+
 export const LIST_GROUPS = `
   SELECT r.Z_PK as id, r.ZNAME as name
   FROM ZABCDRECORD r

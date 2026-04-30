@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -7,12 +7,19 @@ const DEFAULT_CONTAINER_PATH = join(
   "Library/Group Containers/group.com.apple.notes",
 );
 
+const MAX_DEPTH = 4;
+
 export type ResolveResult =
   | { path: string }
   | { error: "not-found" | "permission-denied" };
 
 export class AttachmentResolver {
   private containerPath: string;
+  // Lazy index: identifier (UUID-like dir name) -> first file path inside it.
+  // Built on first lookup; subsequent lookups are O(1). The container is
+  // effectively read-only from this process's POV, so no invalidation.
+  private index: Map<string, string> | null = null;
+  private hadPermissionError = false;
 
   constructor(containerPath?: string) {
     this.containerPath = containerPath ?? DEFAULT_CONTAINER_PATH;
@@ -26,99 +33,91 @@ export class AttachmentResolver {
   }
 
   resolveDetailed(identifier: string): ResolveResult {
-    let sawPermissionError = false;
+    const index = this.getIndex();
+    const path = index.get(identifier);
+    if (path) return { path };
+    return {
+      error: this.hadPermissionError ? "permission-denied" : "not-found",
+    };
+  }
 
-    // Search in priority order: FallbackPDFs first (for scanned/Paper docs),
-    // then Media (most common), then the full Accounts tree as fallback.
+  private getIndex(): Map<string, string> {
+    if (this.index) return this.index;
+    const index = new Map<string, string>();
+    this.index = index;
+
+    // Priority order: per-account FallbackPDFs > per-account Media >
+    // top-level FallbackPDFs > top-level Media > top-level Accounts. The
+    // first identifier seen wins (the index check inside walkAndIndex
+    // prevents later subtrees from overwriting earlier matches).
     const accountsPath = join(this.containerPath, "Accounts");
     if (existsSync(accountsPath)) {
+      let accounts: Dirent[] = [];
       try {
-        const accounts = readdirSync(accountsPath, { withFileTypes: true });
+        accounts = readdirSync(accountsPath, { withFileTypes: true });
+      } catch (err) {
+        if (isPermissionError(err)) this.hadPermissionError = true;
+      }
+      for (const sub of ["FallbackPDFs", "Media"]) {
         for (const acct of accounts) {
           if (!acct.isDirectory()) continue;
-          const acctPath = join(accountsPath, acct.name);
-          for (const sub of ["FallbackPDFs", "Media"]) {
-            const subPath = join(acctPath, sub);
-            if (!existsSync(subPath)) continue;
-            const found = this.findFile(subPath, identifier);
-            if (found.path) return { path: found.path };
-            if (found.permissionDenied) sawPermissionError = true;
-          }
+          const subPath = join(accountsPath, acct.name, sub);
+          if (existsSync(subPath)) this.walkAndIndex(subPath, 0, index);
         }
-      } catch (err) {
-        if (isPermissionError(err)) sawPermissionError = true;
       }
     }
-
-    // Fallback: search top-level FallbackPDFs, Media, and full Accounts tree
     for (const sub of ["FallbackPDFs", "Media", "Accounts"]) {
       const basePath = join(this.containerPath, sub);
-      if (!existsSync(basePath)) continue;
-      const found = this.findFile(basePath, identifier);
-      if (found.path) return { path: found.path };
-      if (found.permissionDenied) sawPermissionError = true;
+      if (existsSync(basePath)) this.walkAndIndex(basePath, 0, index);
     }
 
-    return { error: sawPermissionError ? "permission-denied" : "not-found" };
+    return index;
   }
 
-  private findFirstFile(
+  private walkAndIndex(
     dir: string,
-    depth = 0,
-  ): { path: string | null; permissionDenied: boolean } {
-    if (depth > 2) return { path: null, permissionDenied: false };
-    let permissionDenied = false;
+    depth: number,
+    index: Map<string, string>,
+  ): void {
+    if (depth > MAX_DEPTH) return;
+    let entries: Dirent[];
     try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      // Prefer files at current level
-      const file = entries.find((e) => e.isFile());
-      if (file) return { path: join(dir, file.name), permissionDenied: false };
-      // Otherwise recurse into subdirectories
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const found = this.findFirstFile(join(dir, entry.name), depth + 1);
-          if (found.path) return found;
-          if (found.permissionDenied) permissionDenied = true;
-        }
-      }
+      entries = readdirSync(dir, { withFileTypes: true });
     } catch (err) {
-      if (isPermissionError(err)) permissionDenied = true;
+      if (isPermissionError(err)) this.hadPermissionError = true;
+      return;
     }
-    return { path: null, permissionDenied };
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      // Skip macOS bundles — they contain internal databases, not user files
+      if (entry.name.endsWith(".bundle")) continue;
+      const fullPath = join(dir, entry.name);
+      if (!index.has(entry.name)) {
+        const file = this.findFirstFile(fullPath, 0);
+        if (file) index.set(entry.name, file);
+      }
+      this.walkAndIndex(fullPath, depth + 1, index);
+    }
   }
 
-  private findFile(
-    dir: string,
-    identifier: string,
-    depth = 0,
-  ): { path: string | null; permissionDenied: boolean } {
-    const MAX_DEPTH = 4;
-    if (depth > MAX_DEPTH) return { path: null, permissionDenied: false };
-    let permissionDenied = false;
+  private findFirstFile(dir: string, depth: number): string | null {
+    if (depth > 2) return null;
+    let entries: Dirent[];
     try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          // Skip macOS bundles — they contain internal databases, not user files
-          if (entry.name.endsWith(".bundle")) continue;
-
-          if (entry.name === identifier) {
-            // Found the UUID directory — find the first file in it (may be nested)
-            const file = this.findFirstFile(fullPath);
-            if (file.path) return file;
-            if (file.permissionDenied) permissionDenied = true;
-          }
-          // Recurse deeper (e.g. Accounts/<acct>/Media/<uuid>/file)
-          const found = this.findFile(fullPath, identifier, depth + 1);
-          if (found.path) return found;
-          if (found.permissionDenied) permissionDenied = true;
-        }
-      }
+      entries = readdirSync(dir, { withFileTypes: true });
     } catch (err) {
-      if (isPermissionError(err)) permissionDenied = true;
+      if (isPermissionError(err)) this.hadPermissionError = true;
+      return null;
     }
-    return { path: null, permissionDenied };
+    const file = entries.find((e) => e.isFile());
+    if (file) return join(dir, file.name);
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const found = this.findFirstFile(join(dir, entry.name), depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
   }
 }
 

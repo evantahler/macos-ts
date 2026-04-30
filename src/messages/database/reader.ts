@@ -174,8 +174,21 @@ export class MessageReader {
     return rows.map((r) => r.identifier);
   }
 
-  private rowToChat(row: ChatRow): Chat {
-    const participants = this.getChatParticipants(row.id);
+  private getAllChatParticipants(): Map<number, string[]> {
+    const rows = this.db.query(Q.LIST_ALL_CHAT_PARTICIPANTS).all() as {
+      chatId: number;
+      identifier: string;
+    }[];
+    const map = new Map<number, string[]>();
+    for (const r of rows) {
+      const list = map.get(r.chatId);
+      if (list) list.push(r.identifier);
+      else map.set(r.chatId, [r.identifier]);
+    }
+    return map;
+  }
+
+  private rowToChat(row: ChatRow, participants: string[]): Chat {
     return {
       id: row.id,
       guid: row.guid,
@@ -199,7 +212,10 @@ export class MessageReader {
 
   listChats(options?: ListChatsOptions): Chat[] {
     const rows = this.db.query(Q.LIST_CHATS).all() as ChatRow[];
-    let results = rows.map((r) => this.rowToChat(r));
+    const participantsByChat = this.getAllChatParticipants();
+    let results = rows.map((r) =>
+      this.rowToChat(r, participantsByChat.get(r.id) ?? []),
+    );
 
     if (options?.search) {
       const q = options.search.toLowerCase();
@@ -236,7 +252,7 @@ export class MessageReader {
   getChat(chatId: number): Chat | null {
     const row = this.db.query(Q.GET_CHAT).get(chatId) as ChatRow | null;
     if (!row) return null;
-    return this.rowToChat(row);
+    return this.rowToChat(row, this.getChatParticipants(chatId));
   }
 
   listMessages(chatId: number, options?: ListMessagesOptions): MessageMeta[] {

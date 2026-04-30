@@ -34,8 +34,18 @@ interface GroupRow {
   name: string | null;
 }
 
-interface NoteRow {
-  text: string | null;
+interface BundleRow {
+  kind:
+    | "contact"
+    | "note"
+    | "email"
+    | "phone"
+    | "address"
+    | "url"
+    | "social"
+    | "related"
+    | "date";
+  payload: string;
 }
 
 export class ContactReader {
@@ -129,127 +139,139 @@ export class ContactReader {
   }
 
   getContact(contactId: number): ContactDetails | null {
-    const row = this.db
-      .query(Q.GET_CONTACT)
-      .get(contactId) as ContactRow | null;
-    if (!row) return null;
+    // contactId binds 9 times — one per UNION ALL branch (contact + 8 detail tables).
+    const ids = Array(9).fill(contactId);
+    const rows = this.db.query(Q.GET_CONTACT_BUNDLE).all(...ids) as BundleRow[];
 
-    const contact = this.rowToContact(row);
+    interface Ordered<T> {
+      item: T;
+      order: number;
+    }
+    let contact: Contact | null = null;
+    let note: string | null = null;
+    const orderedEmails: {
+      e: ContactEmail;
+      isPrimary: boolean;
+      idx: number;
+    }[] = [];
+    const orderedPhones: {
+      p: ContactPhone;
+      isPrimary: boolean;
+      idx: number;
+    }[] = [];
+    const orderedAddresses: Ordered<ContactAddress>[] = [];
+    const orderedUrls: Ordered<ContactURL>[] = [];
+    const orderedSocial: Ordered<ContactSocialProfile>[] = [];
+    const orderedRelated: Ordered<ContactRelatedName>[] = [];
+    const orderedDates: Ordered<ContactDate>[] = [];
 
-    const noteRow = this.db
-      .query(Q.LIST_CONTACT_NOTE)
-      .get(contactId) as NoteRow | null;
+    for (const row of rows) {
+      const p = JSON.parse(row.payload) as Record<string, unknown>;
+      switch (row.kind) {
+        case "contact":
+          contact = this.rowToContact(p as unknown as ContactRow);
+          break;
+        case "note":
+          note = (p.text as string | null) ?? null;
+          break;
+        case "email":
+          orderedEmails.push({
+            e: {
+              address: p.address as string,
+              label: this.cleanLabel(p.label as string | null),
+              isPrimary: p.isPrimary === 1,
+            },
+            isPrimary: p.isPrimary === 1,
+            idx: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+        case "phone":
+          orderedPhones.push({
+            p: {
+              number: p.number as string,
+              label: this.cleanLabel(p.label as string | null),
+              isPrimary: p.isPrimary === 1,
+            },
+            isPrimary: p.isPrimary === 1,
+            idx: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+        case "address":
+          orderedAddresses.push({
+            item: {
+              street: (p.street as string | null) ?? null,
+              city: (p.city as string | null) ?? null,
+              state: (p.state as string | null) ?? null,
+              zipCode: (p.zipCode as string | null) ?? null,
+              country: (p.country as string | null) ?? null,
+              label: this.cleanLabel(p.label as string | null),
+            },
+            order: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+        case "url":
+          orderedUrls.push({
+            item: {
+              url: p.url as string,
+              label: this.cleanLabel(p.label as string | null),
+            },
+            order: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+        case "social":
+          orderedSocial.push({
+            item: {
+              url: (p.url as string | null) ?? null,
+              username: (p.username as string | null) ?? null,
+              service: (p.service as string | null) ?? null,
+              label: this.cleanLabel(p.label as string | null),
+            },
+            order: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+        case "related":
+          orderedRelated.push({
+            item: {
+              name: p.name as string,
+              label: this.cleanLabel(p.label as string | null),
+            },
+            order: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+        case "date":
+          orderedDates.push({
+            item: {
+              date: Q.macTimeToDate(p.date as number),
+              label: this.cleanLabel(p.label as string | null),
+            },
+            order: (p.orderingIndex as number) ?? 0,
+          });
+          break;
+      }
+    }
 
-    const emails = (
-      this.db.query(Q.LIST_EMAILS).all(contactId) as {
-        address: string;
-        label: string | null;
-        isPrimary: number;
-      }[]
-    ).map(
-      (r): ContactEmail => ({
-        address: r.address,
-        label: this.cleanLabel(r.label),
-        isPrimary: r.isPrimary === 1,
-      }),
+    if (!contact) return null;
+
+    // emails/phones: primary first, then by orderingIndex
+    orderedEmails.sort((a, b) =>
+      a.isPrimary !== b.isPrimary ? (a.isPrimary ? -1 : 1) : a.idx - b.idx,
+    );
+    orderedPhones.sort((a, b) =>
+      a.isPrimary !== b.isPrimary ? (a.isPrimary ? -1 : 1) : a.idx - b.idx,
     );
 
-    const phones = (
-      this.db.query(Q.LIST_PHONES).all(contactId) as {
-        number: string;
-        label: string | null;
-        isPrimary: number;
-      }[]
-    ).map(
-      (r): ContactPhone => ({
-        number: r.number,
-        label: this.cleanLabel(r.label),
-        isPrimary: r.isPrimary === 1,
-      }),
-    );
-
-    const addresses = (
-      this.db.query(Q.LIST_ADDRESSES).all(contactId) as {
-        street: string | null;
-        city: string | null;
-        state: string | null;
-        zipCode: string | null;
-        country: string | null;
-        label: string | null;
-      }[]
-    ).map(
-      (r): ContactAddress => ({
-        street: r.street,
-        city: r.city,
-        state: r.state,
-        zipCode: r.zipCode,
-        country: r.country,
-        label: this.cleanLabel(r.label),
-      }),
-    );
-
-    const urls = (
-      this.db.query(Q.LIST_URLS).all(contactId) as {
-        url: string;
-        label: string | null;
-      }[]
-    ).map(
-      (r): ContactURL => ({
-        url: r.url,
-        label: this.cleanLabel(r.label),
-      }),
-    );
-
-    const socialProfiles = (
-      this.db.query(Q.LIST_SOCIAL_PROFILES).all(contactId) as {
-        url: string | null;
-        username: string | null;
-        service: string | null;
-        label: string | null;
-      }[]
-    ).map(
-      (r): ContactSocialProfile => ({
-        url: r.url,
-        username: r.username,
-        service: r.service,
-        label: this.cleanLabel(r.label),
-      }),
-    );
-
-    const relatedNames = (
-      this.db.query(Q.LIST_RELATED_NAMES).all(contactId) as {
-        name: string;
-        label: string | null;
-      }[]
-    ).map(
-      (r): ContactRelatedName => ({
-        name: r.name,
-        label: this.cleanLabel(r.label),
-      }),
-    );
-
-    const dates = (
-      this.db.query(Q.LIST_CONTACT_DATES).all(contactId) as {
-        date: number;
-        label: string | null;
-      }[]
-    ).map(
-      (r): ContactDate => ({
-        date: Q.macTimeToDate(r.date),
-        label: this.cleanLabel(r.label),
-      }),
-    );
+    const byOrder = <T>(a: Ordered<T>, b: Ordered<T>) => a.order - b.order;
 
     return {
       ...contact,
-      note: noteRow?.text ?? null,
-      emails,
-      phones,
-      addresses,
-      urls,
-      socialProfiles,
-      relatedNames,
-      dates,
+      note,
+      emails: orderedEmails.map((x) => x.e),
+      phones: orderedPhones.map((x) => x.p),
+      addresses: orderedAddresses.sort(byOrder).map((x) => x.item),
+      urls: orderedUrls.sort(byOrder).map((x) => x.item),
+      socialProfiles: orderedSocial.sort(byOrder).map((x) => x.item),
+      relatedNames: orderedRelated.sort(byOrder).map((x) => x.item),
+      dates: orderedDates.sort(byOrder).map((x) => x.item),
     };
   }
 

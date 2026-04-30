@@ -57,6 +57,12 @@ export const LIST_CHAT_PARTICIPANTS = `
   WHERE chj.chat_id = ?
 `;
 
+export const LIST_ALL_CHAT_PARTICIPANTS = `
+  SELECT chj.chat_id as chatId, h.id as identifier
+  FROM chat_handle_join chj
+  JOIN handle h ON h.ROWID = chj.handle_id
+`;
+
 export const LIST_MESSAGES = `
   SELECT ${MESSAGE_COLUMNS}
   FROM message m

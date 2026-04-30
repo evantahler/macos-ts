@@ -282,6 +282,7 @@ Errors: `DatabaseNotFoundError`, `PhotoNotFoundError`, `AlbumNotFoundError`.
 
 ```bash
 bun test              # Run test suite
+bun run bench         # Hand-time key read paths against the fixtures
 bun run lint          # TypeScript type checking + Biome lint
 bun run mcp           # Start the MCP stdio server
 bun tui               # Interactive TUI for browsing and reading notes

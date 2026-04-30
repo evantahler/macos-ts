@@ -11,6 +11,11 @@ const ADDRESSBOOK_DIR = join(
 const ROOT_DB = join(ADDRESSBOOK_DIR, "AddressBook-v22.abcddb");
 const SOURCES_DIR = join(ADDRESSBOOK_DIR, "Sources");
 
+// Module-level cache: discovery scans every Sources/<UUID> DB and opens each
+// to count rows. Repeated Contacts() instantiation (tests, server restart)
+// would re-scan unnecessarily. Cache the resolved path for the process lifetime.
+let cachedDefaultDbPath: string | null = null;
+
 /**
  * Find the best AddressBook database to open.
  *
@@ -20,7 +25,11 @@ const SOURCES_DIR = join(ADDRESSBOOK_DIR, "Sources");
  * with the most contact records (Z_ENT=22).
  */
 function findDefaultDbPath(): string {
-  if (!existsSync(SOURCES_DIR)) return ROOT_DB;
+  if (cachedDefaultDbPath !== null) return cachedDefaultDbPath;
+  if (!existsSync(SOURCES_DIR)) {
+    cachedDefaultDbPath = ROOT_DB;
+    return ROOT_DB;
+  }
 
   let bestPath = ROOT_DB;
   let bestCount = 0;
@@ -51,6 +60,7 @@ function findDefaultDbPath(): string {
     // Sources dir unreadable, fall back to root
   }
 
+  cachedDefaultDbPath = bestPath;
   return bestPath;
 }
 

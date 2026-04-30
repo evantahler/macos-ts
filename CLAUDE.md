@@ -7,6 +7,7 @@ macos-ts — TypeScript package for accessing macOS data (Notes, Photos, iMessag
 ## Commands
 
 - `bun test` — Run all tests (against fixture DB, no Full Disk Access needed)
+- `bun run bench` — Hand-time key read paths against the test fixtures (Bun.nanoseconds)
 - `bun run lint` — TypeScript type checking + Biome linting/format checking
 - `bun run format` — Auto-fix lint issues and reformat with Biome
 - `bun run mcp` — Start the stdio MCP server (requires Full Disk Access)

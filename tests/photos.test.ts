@@ -129,6 +129,21 @@ describe("photos", () => {
     expect(sunset?.fileSize).toBe(5200000);
   });
 
+  test("album-filtered list still includes modifiedAt and fileSize", () => {
+    // The LEFT JOIN to ZADDITIONALASSETATTRIBUTES was added to
+    // LIST_PHOTOS_IN_ALBUM specifically for this; if it ever gets dropped, the
+    // diffing use case silently breaks for album-scoped queries.
+    const albums = db.albums();
+    const vacation = albums.find((a) => a.title === "Vacation 2025");
+    const photos = db.photos({ albumId: idOf(vacation) });
+    expect(photos.length).toBeGreaterThan(0);
+    for (const p of photos) {
+      expect(p.modifiedAt).toBeInstanceOf(Date);
+      expect(p.modifiedAt.getTime()).toBeGreaterThan(0);
+      expect(p.fileSize).toBeTypeOf("number");
+    }
+  });
+
   test("photos have GPS coordinates when available", () => {
     const photos = db.photos({ favorite: true });
     const withGps = photos.filter((p) => p.latitude !== null);
@@ -159,6 +174,8 @@ describe("getPhoto", () => {
     expect(details.fileSize).toBe(5200000);
     expect(details.favorite).toBe(true);
     expect(details.locallyAvailable).toBe(true);
+    expect(details.modifiedAt).toBeInstanceOf(Date);
+    expect(details.modifiedAt.getTime()).toBeGreaterThan(0);
   });
 
   test("returns video details with duration", () => {
@@ -410,6 +427,16 @@ describe("search", () => {
   test("excludes hidden photos from search", () => {
     const results = db.search("Screenshot");
     expect(results).toHaveLength(0);
+  });
+
+  test("results include modifiedAt and fileSize", () => {
+    const results = db.search("Sunset");
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      expect(r.modifiedAt).toBeInstanceOf(Date);
+      expect(r.modifiedAt.getTime()).toBeGreaterThan(0);
+      expect(r.fileSize).toBeTypeOf("number");
+    }
   });
 });
 
